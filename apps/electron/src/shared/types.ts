@@ -530,6 +530,9 @@ export type SessionEvent =
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
   // Real-time usage update during processing (for context display)
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
+  // Batch processing events
+  | { type: 'batch_progress'; batchId: string; status: string; totalItems: number; completedItems: number; failedItems: number; runningItems: number; pendingItems: number }
+  | { type: 'batch_complete'; batchId: string; status: string }
 
 // Options for sendMessage
 export interface SendMessageOptions {
@@ -928,6 +931,16 @@ export const IPC_CHANNELS = {
   AUTOMATIONS_GET_HISTORY: 'automations:getHistory',
   AUTOMATIONS_GET_LAST_EXECUTED: 'automations:getLastExecuted',
   AUTOMATIONS_CHANGED: 'automations:changed',  // Broadcast event
+
+  // Batch processing
+  BATCH_LIST: 'batches:list',
+  BATCH_START: 'batches:start',
+  BATCH_PAUSE: 'batches:pause',
+  BATCH_RESUME: 'batches:resume',
+  BATCH_GET_STATUS: 'batches:getStatus',
+  BATCH_GET_STATE: 'batches:getState',
+  BATCH_PROGRESS: 'batches:progress',      // Broadcast: progress update
+  BATCH_COMPLETE: 'batches:complete',      // Broadcast: batch finished
 } as const
 
 // Re-import types for ElectronAPI

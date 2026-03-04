@@ -1,0 +1,122 @@
+/**
+ * Batch State Manager
+ *
+ * Handles persistence and computation of batch processing state.
+ * State files are stored as batch-state-{id}.json in the workspace root.
+ */
+
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { join } from 'path'
+import { BATCH_STATE_FILE_PREFIX } from './constants.ts'
+import type { BatchState, BatchItemState, BatchItemStatus, BatchProgress } from './types.ts'
+
+/**
+ * Get the file path for a batch state file.
+ */
+export function getBatchStatePath(workspaceRootPath: string, batchId: string): string {
+  return join(workspaceRootPath, `${BATCH_STATE_FILE_PREFIX}${batchId}.json`)
+}
+
+/**
+ * Load batch state from disk. Returns null if no state file exists.
+ */
+export function loadBatchState(workspaceRootPath: string, batchId: string): BatchState | null {
+  const path = getBatchStatePath(workspaceRootPath, batchId)
+  if (!existsSync(path)) return null
+
+  try {
+    const content = readFileSync(path, 'utf-8')
+    return JSON.parse(content) as BatchState
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Save batch state to disk.
+ */
+export function saveBatchState(workspaceRootPath: string, state: BatchState): void {
+  const path = getBatchStatePath(workspaceRootPath, state.batchId)
+  writeFileSync(path, JSON.stringify(state, null, 2), 'utf-8')
+}
+
+/**
+ * Create initial batch state for a set of item IDs.
+ */
+export function createInitialBatchState(batchId: string, itemIds: string[]): BatchState {
+  const items: Record<string, BatchItemState> = {}
+  for (const id of itemIds) {
+    items[id] = { status: 'pending', retryCount: 0 }
+  }
+
+  return {
+    batchId,
+    status: 'pending',
+    totalItems: itemIds.length,
+    items,
+  }
+}
+
+/**
+ * Update an item's state within a batch state (mutates in place).
+ */
+export function updateItemState(
+  state: BatchState,
+  itemId: string,
+  update: Partial<BatchItemState>,
+): void {
+  const item = state.items[itemId]
+  if (!item) return
+
+  Object.assign(item, update)
+}
+
+/**
+ * Compute progress summary from batch state.
+ */
+export function computeProgress(state: BatchState): BatchProgress {
+  let completedItems = 0
+  let failedItems = 0
+  let runningItems = 0
+  let pendingItems = 0
+
+  for (const item of Object.values(state.items)) {
+    switch (item.status) {
+      case 'completed':
+        completedItems++
+        break
+      case 'failed':
+      case 'skipped':
+        failedItems++
+        break
+      case 'running':
+        runningItems++
+        break
+      case 'pending':
+        pendingItems++
+        break
+    }
+  }
+
+  return {
+    batchId: state.batchId,
+    status: state.status,
+    totalItems: state.totalItems,
+    completedItems,
+    failedItems,
+    runningItems,
+    pendingItems,
+  }
+}
+
+/**
+ * Check if a batch is done (all items completed or failed, none pending/running).
+ */
+export function isBatchDone(state: BatchState): boolean {
+  for (const item of Object.values(state.items)) {
+    if (item.status === 'pending' || item.status === 'running') {
+      return false
+    }
+  }
+  return true
+}

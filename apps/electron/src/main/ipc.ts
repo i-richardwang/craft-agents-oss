@@ -2883,6 +2883,70 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     }
   })
 
+  // ============================================================================
+  // Batch Processing IPC Handlers
+  // ============================================================================
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_LIST, async (_event, workspaceId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) return []
+
+    return processor.listBatches()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_START, async (_event, workspaceId: string, batchId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) throw new Error('Batch processor not initialized')
+
+    return processor.start(batchId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_PAUSE, async (_event, workspaceId: string, batchId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) throw new Error('Batch processor not initialized')
+
+    return processor.pause(batchId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_RESUME, async (_event, workspaceId: string, batchId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) throw new Error('Batch processor not initialized')
+
+    return processor.resume(batchId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_GET_STATUS, async (_event, workspaceId: string, batchId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) return null
+
+    return processor.getProgress(batchId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.BATCH_GET_STATE, async (_event, workspaceId: string, batchId: string) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    if (!processor) return null
+
+    return processor.getState(batchId)
+  })
+
   // Generic workspace image loading (for source icons, status icons, etc.)
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_READ_IMAGE, async (_event, workspaceId: string, relativePath: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)

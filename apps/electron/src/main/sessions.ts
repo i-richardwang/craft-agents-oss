@@ -76,6 +76,7 @@ import { evaluateAutoLabels } from '@craft-agent/shared/labels/auto'
 import { listLabels } from '@craft-agent/shared/labels/storage'
 import { extractLabelId } from '@craft-agent/shared/labels'
 import { AutomationSystem, AUTOMATIONS_HISTORY_FILE, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
+import { BatchProcessor } from '@craft-agent/shared/batches'
 
 // Import and re-export (extracted to avoid Electron dependency in tests)
 import { sanitizeForTitle } from './title-sanitizer'
@@ -806,6 +807,8 @@ export class SessionManager {
   private configWatchers: Map<string, ConfigWatcher> = new Map()
   // Automation systems for workspace event automations - one per workspace (includes scheduler, diffing, and handlers)
   private automationSystems: Map<string, AutomationSystem> = new Map()
+  // Batch processors for workspace batch processing - one per workspace
+  private batchProcessors: Map<string, BatchProcessor> = new Map()
   // Pending credential request resolvers (keyed by requestId)
   private pendingCredentialResolvers: Map<string, (response: import('../shared/types').CredentialResponse) => void> = new Map()
   // Permission request metadata tracking (keyed by requestId)
@@ -1154,6 +1157,50 @@ export class SessionManager {
       })
       this.automationSystems.set(workspaceRootPath, automationSystem)
       sessionLog.info(`Initialized AutomationSystem for workspace ${workspaceId}`)
+    }
+
+    // Initialize BatchProcessor for this workspace (batch item processing)
+    if (!this.batchProcessors.has(workspaceRootPath)) {
+      const batchProcessor = new BatchProcessor({
+        workspaceRootPath,
+        workspaceId,
+        onExecutePrompt: async (params) => {
+          return this.executePromptAutomation(
+            params.workspaceId,
+            params.workspaceRootPath,
+            params.prompt,
+            params.labels,
+            params.permissionMode,
+            params.mentions,
+            params.llmConnection,
+            params.model,
+          )
+        },
+        onProgress: (progress) => {
+          this.sendEvent({
+            type: 'batch_progress',
+            batchId: progress.batchId,
+            status: progress.status,
+            totalItems: progress.totalItems,
+            completedItems: progress.completedItems,
+            failedItems: progress.failedItems,
+            runningItems: progress.runningItems,
+            pendingItems: progress.pendingItems,
+          }, workspaceId)
+        },
+        onBatchComplete: (batchId, status) => {
+          this.sendEvent({
+            type: 'batch_complete',
+            batchId,
+            status,
+          }, workspaceId)
+        },
+        onError: (batchId, error) => {
+          sessionLog.error(`[Batch] Error in batch ${batchId}:`, error.message)
+        },
+      })
+      this.batchProcessors.set(workspaceRootPath, batchProcessor)
+      sessionLog.info(`Initialized BatchProcessor for workspace ${workspaceId}`)
     }
   }
 
@@ -4671,6 +4718,11 @@ export class SessionManager {
         tokenUsage: managed.tokenUsage,
         hasUnread: managed.hasUnread,  // Propagate unread state to renderer
       }, managed.workspace.id)
+
+      // Notify batch processors that this session has completed
+      for (const processor of this.batchProcessors.values()) {
+        if (processor.onSessionComplete(sessionId, reason)) break
+      }
     }
 
     // 6. Always persist
@@ -5877,6 +5929,13 @@ To view this task's output:
   }
 
   /**
+   * Get the BatchProcessor for a workspace (used by IPC handlers).
+   */
+  getBatchProcessor(workspaceRootPath: string): BatchProcessor | undefined {
+    return this.batchProcessors.get(workspaceRootPath)
+  }
+
+  /**
    * Clean up all resources held by the SessionManager.
    * Should be called on app shutdown to prevent resource leaks.
    */
@@ -5900,6 +5959,17 @@ To view this task's output:
       }
     }
     this.automationSystems.clear()
+
+    // Dispose all BatchProcessors (saves active batches as paused)
+    for (const [workspacePath, processor] of this.batchProcessors) {
+      try {
+        processor.dispose()
+        sessionLog.info(`Disposed BatchProcessor for ${workspacePath}`)
+      } catch (error) {
+        sessionLog.error(`Failed to dispose BatchProcessor for ${workspacePath}:`, error)
+      }
+    }
+    this.batchProcessors.clear()
 
     // Clear all pending delta flush timers
     for (const [sessionId, timer] of this.deltaFlushTimers) {
