@@ -212,6 +212,11 @@ export default function App() {
   // Using ref instead of state to avoid re-renders during typing - drafts are only
   // needed for initial value restoration and disk persistence, not reactive updates
   const sessionDraftsRef = useRef<Map<string, string>>(new Map())
+  // Batch event handlers ref (populated by AppShell via context)
+  const batchHandlersRef = useRef<{
+    onProgress: (progress: import('@craft-agent/shared/batches').BatchProgress) => void
+    onComplete: (batchId: string) => void
+  } | null>(null)
   // Unified session options - replaces ultrathinkSessions and sessionModes
   // All session-scoped options in one place (ultrathink, permissionMode)
   const [sessionOptions, setSessionOptions] = useState<Map<string, SessionOptions>>(new Map())
@@ -632,6 +637,16 @@ export default function App() {
     }
 
     const cleanup = window.electronAPI.onSessionEvent((event: SessionEvent) => {
+      // Handle batch events (they have batchId but no sessionId)
+      if (event.type === 'batch_progress') {
+        batchHandlersRef.current?.onProgress(event)
+        return
+      }
+      if (event.type === 'batch_complete') {
+        batchHandlersRef.current?.onComplete(event.batchId)
+        return
+      }
+
       if (!('sessionId' in event)) return
 
       const sessionId = event.sessionId
@@ -1599,6 +1614,7 @@ export default function App() {
                 defaultLayout={[20, 32, 48]}
                 menuNewChatTrigger={menuNewChatTrigger}
                 isFocusedMode={isFocusedMode}
+                batchHandlersRef={batchHandlersRef}
               />
             </div>
             <ResetConfirmationDialog

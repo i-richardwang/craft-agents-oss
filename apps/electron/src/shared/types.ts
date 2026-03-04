@@ -531,8 +531,8 @@ export type SessionEvent =
   // Real-time usage update during processing (for context display)
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
   // Batch processing events
-  | { type: 'batch_progress'; batchId: string; status: string; totalItems: number; completedItems: number; failedItems: number; runningItems: number; pendingItems: number }
-  | { type: 'batch_complete'; batchId: string; status: string }
+  | { type: 'batch_progress' } & import('@craft-agent/shared/batches').BatchProgress
+  | { type: 'batch_complete'; batchId: string; status: import('@craft-agent/shared/batches').BatchStatus }
 
 // Options for sendMessage
 export interface SendMessageOptions {
@@ -1325,6 +1325,14 @@ export interface ElectronAPI {
 
   // Automations change listener (live updates when automations.json changes on disk)
   onAutomationsChanged(callback: (workspaceId: string) => void): () => void
+
+  // Batch processing
+  listBatches(workspaceId: string): Promise<Array<import('@craft-agent/shared/batches').BatchConfig & { progress?: import('@craft-agent/shared/batches').BatchProgress }>>
+  startBatch(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchProgress>
+  pauseBatch(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchProgress>
+  resumeBatch(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchProgress>
+  getBatchStatus(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchProgress | null>
+  getBatchState(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchState | null>
 }
 
 /**
@@ -1549,6 +1557,27 @@ export interface AutomationsNavigationState {
 }
 
 /**
+ * Batch status filter for batches navigation
+ */
+export interface BatchFilter {
+  kind: 'type'
+  batchStatus: 'pending' | 'running' | 'paused' | 'completed' | 'failed'
+}
+
+/**
+ * Batches navigation state - shows BatchesListPanel in navigator
+ */
+export interface BatchesNavigationState {
+  navigator: 'batches'
+  /** Optional filter for batch status */
+  filter?: BatchFilter
+  /** Selected batch details, or null for empty state */
+  details: { type: 'batch'; batchId: string } | null
+  /** Optional right sidebar panel state */
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state - single source of truth for all 3 panels
  *
  * From this state we can derive:
@@ -1562,6 +1591,7 @@ export type NavigationState =
   | SettingsNavigationState
   | SkillsNavigationState
   | AutomationsNavigationState
+  | BatchesNavigationState
 
 /**
  * Type guard to check if state is sessions navigation
@@ -1599,6 +1629,13 @@ export const isAutomationsNavigation = (
 ): state is AutomationsNavigationState => state.navigator === 'automations'
 
 /**
+ * Type guard to check if state is batches navigation
+ */
+export const isBatchesNavigation = (
+  state: NavigationState
+): state is BatchesNavigationState => state.navigator === 'batches'
+
+/**
  * Default navigation state - allSessions with no selection
  */
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
@@ -1628,6 +1665,12 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `automations/automation/${state.details.automationId}`
     }
     return 'automations'
+  }
+  if (state.navigator === 'batches') {
+    if (state.details?.type === 'batch') {
+      return `batches/batch/${state.details.batchId}`
+    }
+    return 'batches'
   }
   if (state.navigator === 'settings') {
     return `settings:${state.subpage}`
@@ -1678,6 +1721,16 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return { navigator: 'automations', details: { type: 'automation', automationId } }
     }
     return { navigator: 'automations', details: null }
+  }
+
+  // Handle batches
+  if (key === 'batches') return { navigator: 'batches', details: null }
+  if (key.startsWith('batches/batch/')) {
+    const batchId = key.slice(14)
+    if (batchId) {
+      return { navigator: 'batches', details: { type: 'batch', batchId } }
+    }
+    return { navigator: 'batches', details: null }
   }
 
   // Handle settings

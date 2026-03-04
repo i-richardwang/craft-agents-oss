@@ -14,6 +14,7 @@ import type {
   SessionFilter,
   SourceFilter,
   AutomationFilter,
+  BatchFilter,
   RightSidebarPanel,
 } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
@@ -35,7 +36,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'settings'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'batches' | 'settings'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -46,6 +47,8 @@ export interface ParsedCompoundRoute {
   sourceFilter?: SourceFilter
   /** Automation filter (only for automations navigator) */
   automationFilter?: AutomationFilter
+  /** Batch filter (only for batches navigator) */
+  batchFilter?: BatchFilter
   /** Details page info (null for empty state) */
   details: {
     type: string
@@ -61,7 +64,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'batches', 'settings'
 ]
 
 /**
@@ -193,6 +196,42 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
     return null
   }
 
+  // Batches navigator - supports status filters (pending, running, paused, completed, failed)
+  if (first === 'batches') {
+    if (segments.length === 1) {
+      return { navigator: 'batches', details: null }
+    }
+
+    // Check for status filter: batches/pending, batches/running, batches/paused, etc.
+    const validBatchStatuses = ['pending', 'running', 'paused', 'completed', 'failed']
+    if (validBatchStatuses.includes(segments[1])) {
+      const batchStatus = segments[1] as 'pending' | 'running' | 'paused' | 'completed' | 'failed'
+      const batchFilter: BatchFilter = { kind: 'type', batchStatus }
+
+      // Check for batch selection within filtered view: batches/running/batch/{batchId}
+      if (segments[2] === 'batch' && segments[3]) {
+        return {
+          navigator: 'batches',
+          batchFilter,
+          details: { type: 'batch', id: segments[3] },
+        }
+      }
+
+      // Just the filter, no selection
+      return { navigator: 'batches', batchFilter, details: null }
+    }
+
+    // Unfiltered batch selection: batches/batch/{batchId}
+    if (segments[1] === 'batch' && segments[2]) {
+      return {
+        navigator: 'batches',
+        details: { type: 'batch', id: segments[2] },
+      }
+    }
+
+    return null
+  }
+
   // Sessions navigator (allSessions, flagged, state)
   let sessionFilter: SessionFilter
   let detailsStartIndex: number
@@ -283,6 +322,16 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     }
     if (!parsed.details) return base
     return `${base}/automation/${parsed.details.id}`
+  }
+
+  if (parsed.navigator === 'batches') {
+    // Build base from filter (batches, batches/running, batches/completed, etc.)
+    let base = 'batches'
+    if (parsed.batchFilter?.kind === 'type') {
+      base = `batches/${parsed.batchFilter.batchStatus}`
+    }
+    if (!parsed.details) return base
+    return `${base}/batch/${parsed.details.id}`
   }
 
   // Sessions navigator
@@ -406,6 +455,14 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       return { type: 'view', name: 'automations', params: {} }
     }
     return { type: 'view', name: 'automation-info', id: compound.details.id, params: {} }
+  }
+
+  // Batches
+  if (compound.navigator === 'batches') {
+    if (!compound.details) {
+      return { type: 'view', name: 'batches', params: {} }
+    }
+    return { type: 'view', name: 'batch-info', id: compound.details.id, params: {} }
   }
 
   // Sessions
@@ -541,6 +598,22 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  // Batches - include filter if present
+  if (compound.navigator === 'batches') {
+    if (!compound.details) {
+      return {
+        navigator: 'batches',
+        filter: compound.batchFilter,
+        details: null,
+      }
+    }
+    return {
+      navigator: 'batches',
+      filter: compound.batchFilter,
+      details: { type: 'batch', batchId: compound.details.id },
+    }
+  }
+
   // Sessions
   const filter = compound.sessionFilter || { kind: 'allSessions' as const }
   if (compound.details) {
@@ -618,6 +691,19 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
         }
       }
       return { navigator: 'automations', details: null }
+    case 'batches':
+      return { navigator: 'batches', details: null }
+    case 'batch-info':
+      if (parsed.id) {
+        return {
+          navigator: 'batches',
+          details: {
+            type: 'batch',
+            batchId: parsed.id,
+          },
+        }
+      }
+      return { navigator: 'batches', details: null }
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -720,6 +806,14 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       navigator: 'automations',
       automationFilter: state.filter ?? undefined,
       details: state.details ? { type: 'automation', id: state.details.automationId } : null,
+    }
+  }
+
+  if (state.navigator === 'batches') {
+    return {
+      navigator: 'batches',
+      batchFilter: state.filter ?? undefined,
+      details: state.details ? { type: 'batch', id: state.details.batchId } : null,
     }
   }
 

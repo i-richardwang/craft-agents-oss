@@ -158,6 +158,16 @@ export interface AppShellContextType {
   automationTestResults?: Record<string, import('../components/automations/types').TestResult>
   /** Fetch execution history for an automation by ID */
   getAutomationHistory?: (automationId: string) => Promise<import('../components/automations/types').ExecutionEntry[]>
+
+  // Batch management
+  /** Start a batch by ID */
+  onStartBatch?: (batchId: string) => void
+  /** Pause a batch by ID */
+  onPauseBatch?: (batchId: string) => void
+  /** Resume a batch by ID */
+  onResumeBatch?: (batchId: string) => void
+  /** Get full batch state (including items) by ID */
+  getBatchState?: (batchId: string) => Promise<import('@craft-agent/shared/batches').BatchState | null>
 }
 
 const AppShellContext = createContext<AppShellContextType | null>(null)

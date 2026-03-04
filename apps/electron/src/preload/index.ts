@@ -622,6 +622,14 @@ const api: ElectronAPI = {
       ipcRenderer.removeListener(IPC_CHANNELS.AUTOMATIONS_CHANGED, handler)
     }
   },
+
+  // Batch processing
+  listBatches: (workspaceId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_LIST, workspaceId),
+  startBatch: (workspaceId: string, batchId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_START, workspaceId, batchId),
+  pauseBatch: (workspaceId: string, batchId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_PAUSE, workspaceId, batchId),
+  resumeBatch: (workspaceId: string, batchId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_RESUME, workspaceId, batchId),
+  getBatchStatus: (workspaceId: string, batchId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_GET_STATUS, workspaceId, batchId),
+  getBatchState: (workspaceId: string, batchId: string) => ipcRenderer.invoke(IPC_CHANNELS.BATCH_GET_STATE, workspaceId, batchId),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

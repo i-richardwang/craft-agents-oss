@@ -30,6 +30,7 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
+  isBatchesNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection } from '@/hooks/useEntitySelection'
@@ -41,6 +42,8 @@ import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
+import { BatchInfoPage } from '../batches/BatchInfoPage'
+import { batchesAtom } from '@/atoms/batches'
 
 export interface MainContentPanelProps {
   /** Whether both sidebar and navigator are hidden (focus mode / CMD+.) */
@@ -75,6 +78,10 @@ export function MainContentPanel({
     onDeleteAutomation,
     automationTestResults,
     getAutomationHistory,
+    onStartBatch,
+    onPauseBatch,
+    onResumeBatch,
+    getBatchState,
   } = useAppShellContext()
 
   // Session multi-select state
@@ -84,6 +91,7 @@ export function MainContentPanel({
   const { clearMultiSelect } = useSessionSelection()
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const automations = useAtomValue(automationsAtom)
+  const batches = useAtomValue(batchesAtom)
 
   // Execution history for the selected automation
   const selectedAutomationId = isAutomationsNavigation(navState) ? navState.details?.automationId : undefined
@@ -291,6 +299,34 @@ export function MainContentPanel({
       <Panel variant="grow" className={className}>
         <div className="flex items-center justify-center h-full text-muted-foreground">
           <p className="text-sm">No automations configured</p>
+        </div>
+      </Panel>
+    )
+  }
+
+  // Batches navigator - show batch info or empty state
+  if (isBatchesNavigation(navState)) {
+    const batchDetails = navState.details
+    if (batchDetails) {
+      const batch = batches.find(b => b.id === batchDetails.batchId)
+      if (batch) {
+        return wrapWithStoplight(
+          <Panel variant="grow" className={className}>
+            <BatchInfoPage
+              batch={batch}
+              onStart={onStartBatch ? () => onStartBatch(batch.id ?? '') : undefined}
+              onPause={onPauseBatch ? () => onPauseBatch(batch.id ?? '') : undefined}
+              onResume={onResumeBatch ? () => onResumeBatch(batch.id ?? '') : undefined}
+              getBatchState={getBatchState}
+            />
+          </Panel>
+        )
+      }
+    }
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">No batches configured</p>
         </div>
       </Panel>
     )

@@ -82,7 +82,7 @@ import { useFocusZone } from "@/hooks/keyboard"
 import { useFocusContext } from "@/context/FocusContext"
 import { getSessionTitle } from "@/utils/session"
 import { useSetAtom } from "jotai"
-import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter } from "../../../shared/types"
+import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter, BatchFilter } from "../../../shared/types"
 import { sessionMetaMapAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
@@ -107,6 +107,7 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
+  isBatchesNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import type { SettingsSubpage } from "../../../shared/types"
@@ -115,6 +116,9 @@ import { SkillsListPanel } from "./SkillsListPanel"
 import { AutomationsListPanel } from "../automations/AutomationsListPanel"
 import { APP_EVENTS, AGENT_EVENTS, type AutomationFilterKind, AUTOMATION_TYPE_TO_FILTER_KIND } from "../automations/types"
 import { useAutomations } from "@/hooks/useAutomations"
+import { BatchesListPanel } from "../batches/BatchesListPanel"
+import { BATCH_STATUS_TO_FILTER_KIND } from "../batches/types"
+import { useBatches } from "@/hooks/useBatches"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { PanelHeader } from "./PanelHeader"
 import { EditPopover, getEditConfig, type EditContextKey } from "@/components/ui/EditPopover"
@@ -144,6 +148,11 @@ interface AppShellProps {
   menuNewChatTrigger?: number
   /** Focused mode - hides sidebars, shows only the chat content */
   isFocusedMode?: boolean
+  /** Ref for batch event handlers (populated by AppShell, consumed by App.tsx event listener) */
+  batchHandlersRef?: React.MutableRefObject<{
+    onProgress: (progress: import('@craft-agent/shared/batches').BatchProgress) => void
+    onComplete: (batchId: string) => void
+  } | null>
 }
 
 /** Filter mode for tri-state filtering: include shows only matching, exclude hides matching */
@@ -460,6 +469,7 @@ function AppShellContent({
   defaultCollapsed = false,
   menuNewChatTrigger,
   isFocusedMode = false,
+  batchHandlersRef,
 }: AppShellProps) {
   // Destructure commonly used values from context
   // Note: sessions is NOT destructured here - we use sessionMetaMapAtom instead
@@ -578,6 +588,9 @@ function AppShellContent({
 
   // Derive automation filter from navigation state (only when in automations navigator)
   const automationFilter: AutomationFilter | null = isAutomationsNavigation(navState) ? navState.filter ?? null : null
+
+  // Derive batch filter from navigation state (only when in batches navigator)
+  const batchFilter: BatchFilter | null = isBatchesNavigation(navState) ? navState.filter ?? null : null
 
   // Per-view filter storage: each session list view (allSessions, flagged, state:X, label:X, view:X)
   // has its own independent set of status and label filters.
@@ -776,6 +789,27 @@ function AppShellContent({
     handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, confirmDeleteAutomation,
     getAutomationHistory,
   } = useAutomations(activeWorkspaceId, activeWorkspace?.rootPath)
+
+  // Batches — state, handlers
+  const {
+    batches,
+    handleStartBatch, handlePauseBatch, handleResumeBatch,
+    getBatchState,
+    updateBatchProgress, handleBatchComplete,
+  } = useBatches(activeWorkspaceId)
+
+  // Wire up batch event handlers ref for App.tsx
+  React.useEffect(() => {
+    if (batchHandlersRef) {
+      batchHandlersRef.current = {
+        onProgress: updateBatchProgress,
+        onComplete: handleBatchComplete,
+      }
+    }
+    return () => {
+      if (batchHandlersRef) batchHandlersRef.current = null
+    }
+  }, [batchHandlersRef, updateBatchProgress, handleBatchComplete])
 
   // Whether local MCP servers are enabled (affects stdio source status)
   const [localMcpEnabled, setLocalMcpEnabled] = React.useState(true)
@@ -1010,6 +1044,12 @@ function AppShellContent({
     // Preserve current automation filter when selecting an automation
     const type = isAutomationsNavigation(navState) ? navState.filter?.automationType : undefined
     navigate(routes.view.automations({ automationId, type }))
+  }, [navState, navigate])
+
+  // Handle selecting a batch from the list
+  const handleBatchSelect = React.useCallback((batchId: string) => {
+    const status = isBatchesNavigation(navState) ? navState.filter?.batchStatus : undefined
+    navigate(routes.view.batches({ batchId, status }))
   }, [navState, navigate])
 
   // Focus zone management
@@ -1540,7 +1580,11 @@ function AppShellContent({
     onDeleteAutomation: handleDeleteAutomation,
     automationTestResults,
     getAutomationHistory,
-  }), [contextValue, handleDeleteSession, sources, skills, labelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory])
+    onStartBatch: handleStartBatch,
+    onPauseBatch: handlePauseBatch,
+    onResumeBatch: handleResumeBatch,
+    getBatchState,
+  }), [contextValue, handleDeleteSession, sources, skills, labelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleStartBatch, handlePauseBatch, handleResumeBatch, getBatchState])
 
   // Persist expanded folders to localStorage (workspace-scoped)
   React.useEffect(() => {
@@ -1658,6 +1702,11 @@ function AppShellContent({
 
   const handleAutomationsAgenticClick = useCallback(() => {
     navigate(routes.view.automationsAgentic())
+  }, [])
+
+  // Handler for batches view
+  const handleBatchesClick = useCallback(() => {
+    navigate(routes.view.batches())
   }, [])
 
   // Handler for settings view
@@ -1904,11 +1953,12 @@ function AppShellContent({
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
+    result.push({ id: 'nav:batches', type: 'nav', action: handleBatchesClick })
     result.push({ id: 'nav:settings', type: 'nav', action: () => handleSettingsClick('app') })
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleBatchesClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2038,6 +2088,12 @@ function AppShellContent({
       }
     }
 
+    // Batches navigator
+    if (isBatchesNavigation(navState)) {
+      if (!batchFilter) return 'All Batches'
+      return batchFilter.batchStatus.charAt(0).toUpperCase() + batchFilter.batchStatus.slice(1)
+    }
+
     // Settings navigator
     if (isSettingsNavigation(navState)) return 'Settings'
 
@@ -2058,7 +2114,7 @@ function AppShellContent({
       default:
         return 'All Sessions'
     }
-  }, [navState, sessionFilter, effectiveSessionStatuses, labelConfigs, viewConfigs, automationFilter])
+  }, [navState, sessionFilter, effectiveSessionStatuses, labelConfigs, viewConfigs, automationFilter, batchFilter])
 
   // Build recursive sidebar items from label tree.
   // Each node renders with condensed height (compact: true) since many labels expected.
@@ -2407,6 +2463,14 @@ function AppShellContent({
                           contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
                         },
                       ],
+                    },
+                    {
+                      id: "nav:batches",
+                      title: "Batches",
+                      label: String(batches.length),
+                      icon: Layers,
+                      variant: isBatchesNavigation(navState) ? "default" : "ghost",
+                      onClick: handleBatchesClick,
                     },
                     // --- Separator ---
                     { id: "separator:skills-settings", type: "separator" },
@@ -3097,6 +3161,18 @@ function AppShellContent({
                 onDeleteAutomation={handleDeleteAutomation}
                 selectedAutomationId={isAutomationsNavigation(navState) && navState.details ? navState.details.automationId : null}
                 workspaceRootPath={activeWorkspace?.rootPath}
+              />
+            )}
+            {isBatchesNavigation(navState) && (
+              /* Batches List - filtered by status if batchFilter is active */
+              <BatchesListPanel
+                batches={batches}
+                batchFilter={batchFilter ? { kind: BATCH_STATUS_TO_FILTER_KIND[batchFilter.batchStatus] ?? 'all' } : undefined}
+                onBatchClick={handleBatchSelect}
+                onStartBatch={handleStartBatch}
+                onPauseBatch={handlePauseBatch}
+                onResumeBatch={handleResumeBatch}
+                selectedBatchId={isBatchesNavigation(navState) && navState.details ? navState.details.batchId : null}
               />
             )}
             {isSettingsNavigation(navState) && (

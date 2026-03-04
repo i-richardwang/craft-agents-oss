@@ -176,6 +176,14 @@ export const routes = {
     automationsAgentic: (automationId?: string) =>
       automationId ? `automations/agentic/automation/${automationId}` as const : 'automations/agentic' as const,
 
+    /** Batches view (batches navigator) - supports status filtering */
+    batches: (params?: { batchId?: string; status?: 'pending' | 'running' | 'paused' | 'completed' | 'failed' }) => {
+      const { batchId, status } = params ?? {}
+      const base = status ? `batches/${status}` : 'batches'
+      if (batchId) return `${base}/batch/${batchId}` as const
+      return base as 'batches' | `batches/${'pending' | 'running' | 'paused' | 'completed' | 'failed'}`
+    },
+
     /** Settings view (settings navigator) - uses SettingsSubpage from registry */
     settings: (subpage?: SettingsSubpage) =>
       subpage
