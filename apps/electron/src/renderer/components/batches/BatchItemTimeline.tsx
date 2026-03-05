@@ -1,0 +1,82 @@
+/**
+ * BatchItemTimeline
+ *
+ * Compact timeline showing batch item processing results.
+ * Displayed as a section within BatchInfoPage.
+ * Follows the AutomationEventTimeline pattern.
+ */
+
+import { CheckCircle2, XCircle, Loader2, Clock, MinusCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useNavigation } from '@/contexts/NavigationContext'
+import type { BatchItemState, BatchItemStatus } from '@craft-agent/shared/batches'
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const statusConfig: Record<BatchItemStatus, { icon: React.ElementType; classes: string }> = {
+  completed: { icon: CheckCircle2, classes: 'text-success' },
+  failed:    { icon: XCircle,      classes: 'text-destructive' },
+  running:   { icon: Loader2,      classes: 'text-info animate-spin' },
+  pending:   { icon: Clock,        classes: 'text-muted-foreground' },
+  skipped:   { icon: MinusCircle,  classes: 'text-muted-foreground' },
+}
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export interface BatchItemTimelineProps {
+  items: Record<string, BatchItemState>
+  className?: string
+}
+
+export function BatchItemTimeline({ items, className }: BatchItemTimelineProps) {
+  const { navigateToSession } = useNavigation()
+  const entries = Object.entries(items)
+
+  if (entries.length === 0) {
+    return (
+      <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+        No items processed yet.
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('divide-y divide-border/30', className)}>
+      {entries.map(([itemId, item]) => {
+        const config = statusConfig[item.status] ?? statusConfig.pending
+        const StatusIcon = config.icon
+
+        return (
+          <div key={itemId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            {/* Status icon */}
+            <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', config.classes)} />
+
+            {/* Item ID */}
+            <span className="text-xs font-mono text-foreground/70 w-24 shrink-0 truncate">
+              {itemId}
+            </span>
+
+            {/* Summary or error */}
+            <span className="flex-1 min-w-0 truncate text-xs text-foreground/70">
+              {item.error || item.summary || '—'}
+            </span>
+
+            {/* Session deep link */}
+            {item.sessionId && (
+              <button
+                className="shrink-0 text-[11px] text-accent hover:underline cursor-pointer"
+                onClick={() => navigateToSession(item.sessionId!)}
+              >
+                Open session
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}

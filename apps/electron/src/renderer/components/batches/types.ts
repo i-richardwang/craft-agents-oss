@@ -4,6 +4,7 @@
  * UI-specific types for the batches components.
  */
 
+import type { BadgeColor } from '@/components/info/Info_Badge'
 import type { BatchConfig, BatchProgress, BatchStatus } from '@craft-agent/shared/batches'
 
 // ============================================================================
@@ -44,10 +45,35 @@ export const BATCH_STATUS_DISPLAY: Record<BatchStatus, string> = {
   failed: 'Failed',
 }
 
+/** Color mapping for MicroBadge and BatchAvatar (raw bg/text classes). */
 export const BATCH_STATUS_COLOR: Record<BatchStatus, { bg: string; text: string }> = {
   pending: { bg: 'bg-foreground/8', text: 'text-foreground/60' },
   running: { bg: 'bg-info/10', text: 'text-info' },
   paused: { bg: 'bg-warning/10', text: 'text-warning' },
   completed: { bg: 'bg-success/10', text: 'text-success' },
   failed: { bg: 'bg-destructive/10', text: 'text-destructive' },
+}
+
+/** Color mapping for Info_Badge usage in detail pages. */
+export const BATCH_STATUS_BADGE_COLOR: Record<BatchStatus, BadgeColor> = {
+  pending: 'muted',
+  running: 'warning',
+  paused: 'default',
+  completed: 'success',
+  failed: 'destructive',
+}
+
+// ============================================================================
+// Permission Display (shared with automations)
+// ============================================================================
+
+const PERMISSION_DISPLAY_NAMES: Record<string, string> = {
+  'safe': 'Safe Mode',
+  'ask': 'Ask First',
+  'allow-all': 'Allow All',
+}
+
+export function getPermissionDisplayName(mode?: string): string {
+  if (!mode) return 'Safe Mode'
+  return PERMISSION_DISPLAY_NAMES[mode] ?? mode
 }

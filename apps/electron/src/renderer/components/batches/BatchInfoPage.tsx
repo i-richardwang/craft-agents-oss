@@ -2,12 +2,12 @@
  * BatchInfoPage
  *
  * Detail view for a selected batch, using the Info_Page compound component system.
- * Follows AutomationInfoPage pattern: Hero → Sections (Source, Execution, Prompt, Progress, Items, JSON).
+ * Follows AutomationInfoPage pattern: Hero → Sections (Source, Action, Execution, Progress, Items, JSON).
  */
 
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import { Play, Pause, RotateCcw, ExternalLink, PauseCircle } from 'lucide-react'
+import { PauseCircle } from 'lucide-react'
 import {
   Info_Page,
   Info_Section,
@@ -18,14 +18,13 @@ import {
 } from '@/components/info'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { useActiveWorkspace } from '@/context/AppShellContext'
-import { useNavigation } from '@/contexts/NavigationContext'
 import { BatchAvatar } from './BatchAvatar'
 import { BatchMenu } from './BatchMenu'
-import { BatchProgressBar } from './BatchProgressBar'
-import { BATCH_STATUS_DISPLAY, BATCH_STATUS_COLOR } from './types'
-import { cn } from '@/lib/utils'
+import { BatchActionRow } from './BatchActionRow'
+import { BatchItemTimeline } from './BatchItemTimeline'
+import { BATCH_STATUS_DISPLAY, BATCH_STATUS_BADGE_COLOR, getPermissionDisplayName } from './types'
 import type { BatchListItem } from './types'
-import type { BatchState, BatchStatus, BatchItemState } from '@craft-agent/shared/batches'
+import type { BatchState, BatchStatus } from '@craft-agent/shared/batches'
 
 // ============================================================================
 // Component
@@ -55,7 +54,6 @@ export function BatchInfoPage({
   className,
 }: BatchInfoPageProps) {
   const workspace = useActiveWorkspace()
-  const { navigateToSession } = useNavigation()
   const [batchState, setBatchState] = useState<BatchState | null>(null)
   const status: BatchStatus = batch.progress?.status ?? 'pending'
   const enabled = batch.enabled !== false
@@ -77,6 +75,8 @@ export function BatchInfoPage({
     })
     return () => { stale = true }
   }, [getBatchState, batch.id, batch.progress])
+
+  const itemCount = batchState ? Object.keys(batchState.items).length : 0
 
   return (
     <Info_Page className={className}>
@@ -118,165 +118,106 @@ export function BatchInfoPage({
           </Info_Alert>
         )}
 
-        {/* Section: Data Source */}
-        <Info_Section title="Data Source" actions={editActions}>
+        {/* Section: Source */}
+        <Info_Section title="Source" description="Where to read items from" actions={editActions}>
           <Info_Table>
-            <Info_Table.Row label="Type" value={batch.source.type.toUpperCase()} />
-            <Info_Table.Row label="Path" value={batch.source.path} />
-            <Info_Table.Row label="ID Field" value={batch.source.idField} />
+            <Info_Table.Row label="Format">
+              <Info_Badge color="default">{batch.source.type.toUpperCase()}</Info_Badge>
+            </Info_Table.Row>
+            <Info_Table.Row label="Path">
+              <code className="text-xs font-mono bg-foreground/5 px-1.5 py-0.5 rounded">
+                {batch.source.path}
+              </code>
+            </Info_Table.Row>
+            <Info_Table.Row label="ID Field">
+              <code className="text-xs font-mono bg-foreground/5 px-1.5 py-0.5 rounded">
+                {batch.source.idField}
+              </code>
+            </Info_Table.Row>
           </Info_Table>
         </Info_Section>
 
+        {/* Section: Action */}
+        <Info_Section title="Action" description="Prompt sent for each item" actions={editActions}>
+          <BatchActionRow prompt={batch.action.prompt} />
+        </Info_Section>
+
         {/* Section: Execution */}
-        <Info_Section title="Execution" actions={editActions}>
+        <Info_Section title="Execution" description="How items are processed" actions={editActions}>
           <Info_Table>
-            <Info_Table.Row label="Max Concurrency" value={String(batch.execution?.maxConcurrency ?? 3)} />
-            <Info_Table.Row label="Retry on Failure" value={batch.execution?.retryOnFailure ? 'Yes' : 'No'} />
-            <Info_Table.Row label="Max Retries" value={String(batch.execution?.maxRetries ?? 2)} />
-            <Info_Table.Row label="Permission Mode" value={batch.execution?.permissionMode ?? 'safe'} />
+            <Info_Table.Row label="Concurrency" value={String(batch.execution?.maxConcurrency ?? 3)} />
+            <Info_Table.Row label="Retry">
+              <Info_Badge color={batch.execution?.retryOnFailure ? 'success' : 'muted'}>
+                {batch.execution?.retryOnFailure ? 'Enabled' : 'Disabled'}
+              </Info_Badge>
+            </Info_Table.Row>
+            {batch.execution?.retryOnFailure && (
+              <Info_Table.Row label="Max Retries" value={String(batch.execution?.maxRetries ?? 2)} />
+            )}
+            <Info_Table.Row label="Access Level" value={getPermissionDisplayName(batch.execution?.permissionMode)} />
             {batch.execution?.model && (
               <Info_Table.Row label="Model" value={batch.execution.model} />
             )}
             {batch.execution?.llmConnection && (
               <Info_Table.Row label="LLM Connection" value={batch.execution.llmConnection} />
             )}
+            {batch.action.labels && batch.action.labels.length > 0 && (
+              <Info_Table.Row label="Labels">
+                <div className="flex gap-1.5 flex-wrap">
+                  {batch.action.labels.map(label => (
+                    <Info_Badge key={label} color="muted">{label}</Info_Badge>
+                  ))}
+                </div>
+              </Info_Table.Row>
+            )}
+            {batch.action.mentions && batch.action.mentions.length > 0 && (
+              <Info_Table.Row label="Mentions">
+                <div className="flex gap-1.5 flex-wrap">
+                  {batch.action.mentions.map(mention => (
+                    <Info_Badge key={mention} color="default">@{mention}</Info_Badge>
+                  ))}
+                </div>
+              </Info_Table.Row>
+            )}
           </Info_Table>
-        </Info_Section>
-
-        {/* Section: Prompt Template */}
-        <Info_Section title="Prompt Template" actions={editActions}>
-          <Info_Markdown>{`\`\`\`\n${batch.action.prompt}\n\`\`\``}</Info_Markdown>
-          {batch.action.labels && batch.action.labels.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap mt-2">
-              {batch.action.labels.map(label => (
-                <Info_Badge key={label}>{label}</Info_Badge>
-              ))}
-            </div>
-          )}
-          {batch.action.mentions && batch.action.mentions.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap mt-2">
-              {batch.action.mentions.map(mention => (
-                <Info_Badge key={mention} color="muted">@{mention}</Info_Badge>
-              ))}
-            </div>
-          )}
         </Info_Section>
 
         {/* Section: Progress */}
         {batch.progress && (
-          <Info_Section title="Progress">
-            <BatchProgressBar progress={batch.progress} />
-
-            {/* Status counts */}
-            <div className="flex gap-4 mt-3 text-xs">
-              <span className="text-success">
-                {batch.progress.completedItems} completed
-              </span>
-              <span className="text-destructive">
-                {batch.progress.failedItems} failed
-              </span>
-              <span className="text-info">
-                {batch.progress.runningItems} running
-              </span>
-              <span className="text-muted-foreground">
-                {batch.progress.pendingItems} pending
-              </span>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-2 mt-3">
-              {(status === 'pending' || status === 'completed' || status === 'failed') && onStart && (
-                <button
-                  onClick={onStart}
-                  className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"
-                >
-                  <Play className="h-3 w-3" />
-                  Start
-                </button>
-              )}
-              {status === 'running' && onPause && (
-                <button
-                  onClick={onPause}
-                  className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"
-                >
-                  <Pause className="h-3 w-3" />
-                  Pause
-                </button>
-              )}
-              {status === 'paused' && onResume && (
-                <button
-                  onClick={onResume}
-                  className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Resume
-                </button>
-              )}
-            </div>
+          <Info_Section
+            title="Progress"
+            description={`${batch.progress.completedItems + batch.progress.failedItems} of ${batch.progress.totalItems} items processed`}
+          >
+            <Info_Table>
+              <Info_Table.Row label="Status">
+                <Info_Badge color={BATCH_STATUS_BADGE_COLOR[status]}>
+                  {BATCH_STATUS_DISPLAY[status]}
+                </Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Total" value={`${batch.progress.totalItems} items`} />
+              <Info_Table.Row label="Completed">
+                <Info_Badge color="success">{batch.progress.completedItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Failed">
+                <Info_Badge color="destructive">{batch.progress.failedItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Running">
+                <Info_Badge color="warning">{batch.progress.runningItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Pending">
+                <Info_Badge color="muted">{batch.progress.pendingItems}</Info_Badge>
+              </Info_Table.Row>
+            </Info_Table>
           </Info_Section>
         )}
 
         {/* Section: Items */}
-        {batchState && Object.keys(batchState.items).length > 0 && (
-          <Info_Section
-            title="Items"
-            description={`${Object.keys(batchState.items).length} items in this batch`}
-          >
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-foreground/[0.02] border-b border-border">
-                    <th className="text-left font-medium px-3 py-2 text-muted-foreground">Item ID</th>
-                    <th className="text-left font-medium px-3 py-2 text-muted-foreground">Status</th>
-                    <th className="text-left font-medium px-3 py-2 text-muted-foreground">Session</th>
-                    <th className="text-left font-medium px-3 py-2 text-muted-foreground">Retries</th>
-                    <th className="text-left font-medium px-3 py-2 text-muted-foreground">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(batchState.items).map(([itemId, item]: [string, BatchItemState]) => {
-                    const itemStatusColors = BATCH_STATUS_COLOR[item.status as BatchStatus] ?? BATCH_STATUS_COLOR.pending
-                    return (
-                      <tr key={itemId} className="border-b border-border/50 last:border-b-0">
-                        <td className="px-3 py-1.5 font-mono text-foreground/80 max-w-[120px] truncate">
-                          {itemId}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <span className={cn(
-                            'inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded',
-                            itemStatusColors.bg,
-                            itemStatusColors.text,
-                          )}>
-                            {item.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5">
-                          {item.sessionId ? (
-                            <button
-                              onClick={() => navigateToSession(item.sessionId!)}
-                              className="text-accent hover:underline inline-flex items-center gap-0.5"
-                            >
-                              <span className="truncate max-w-[100px]">{item.sessionId.slice(0, 8)}</span>
-                              <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                            </button>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5 text-muted-foreground">
-                          {item.retryCount > 0 ? item.retryCount : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-destructive max-w-[200px] truncate">
-                          {item.error ?? '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Info_Section>
-        )}
+        <Info_Section
+          title="Items"
+          description={itemCount > 0 ? `${itemCount} items in this batch` : undefined}
+        >
+          <BatchItemTimeline items={batchState?.items ?? {}} />
+        </Info_Section>
 
         {/* Section: Raw config (JSON) */}
         <Info_Section title="Raw config">

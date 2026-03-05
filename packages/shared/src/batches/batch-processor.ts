@@ -143,62 +143,20 @@ export class BatchProcessor {
   // ============================================================================
 
   /**
-   * Start a batch. Loads data, creates/resumes state, begins dispatching.
+   * Start (or restart) a batch. Loads data, creates/resumes state, begins
+   * dispatching in the background. Returns initial progress immediately.
    */
-  async start(batchId: string): Promise<BatchProgress> {
-    const config = this.getBatchConfig(batchId)
-    if (!config) {
-      throw new Error(`Batch "${batchId}" not found in configuration`)
-    }
-
-    if (config.enabled === false) {
-      throw new Error(`Batch "${batchId}" is disabled`)
-    }
-
-    // Load data source
-    const items = loadBatchItems(config.source, this.options.workspaceRootPath)
-    log.info(`[BatchProcessor] Loaded ${items.length} items from ${config.source.path} for batch "${batchId}"`)
-
-    const itemMap = new Map<string, BatchItem>()
-    for (const item of items) {
-      itemMap.set(item.id, item)
-    }
-    this.batchItems.set(batchId, itemMap)
-
-    // Create or resume state
-    let state = loadBatchState(this.options.workspaceRootPath, batchId)
-
-    if (state) {
-      log.info(`[BatchProcessor] Resuming batch "${batchId}" from persisted state`)
-      // Resume: mark running items back to pending (sessions may have been lost)
-      for (const [itemId, itemState] of Object.entries(state.items)) {
-        if (itemState.status === 'running') {
-          updateItemState(state, itemId, { status: 'pending', sessionId: undefined })
-        }
-      }
-      // Add any new items that appeared in the data source
-      for (const item of items) {
-        if (!(item.id in state.items)) {
-          state.items[item.id] = { status: 'pending', retryCount: 0 }
-          state.totalItems++
-        }
-      }
-    } else {
-      state = createInitialBatchState(batchId, items.map((i) => i.id))
-    }
+  start(batchId: string): BatchProgress {
+    const state = this.ensureActive(batchId)
 
     state.status = 'running'
     state.startedAt = state.startedAt ?? Date.now()
-
-    this.activeStates.set(batchId, state)
     saveBatchState(this.options.workspaceRootPath, state)
 
+    const config = this.getBatchConfig(batchId)!
     log.info(`[BatchProcessor] Started batch "${batchId}" with ${state.totalItems} items (maxConcurrency: ${config.execution?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY})`)
 
-    // Start dispatching
-    await this.dispatchNext(batchId)
-
-    return computeProgress(state)
+    return this.beginDispatching(batchId, state)
   }
 
   /**
@@ -214,17 +172,23 @@ export class BatchProcessor {
     saveBatchState(this.options.workspaceRootPath, state)
 
     log.info(`[BatchProcessor] Paused batch "${batchId}"`)
-    return computeProgress(state)
+
+    const progress = computeProgress(state)
+    this.options.onProgress?.(progress)
+    return progress
   }
 
   /**
-   * Resume a paused batch.
+   * Resume a paused batch. After a cold restart the batch may only exist on
+   * disk — ensureActive() transparently loads it back into memory.
    */
-  async resume(batchId: string): Promise<BatchProgress> {
-    const state = this.activeStates.get(batchId)
-    if (!state) {
-      throw new Error(`Batch "${batchId}" is not active`)
+  resume(batchId: string): BatchProgress {
+    // Load into memory if needed (cold restart case)
+    if (!this.activeStates.has(batchId)) {
+      this.ensureActive(batchId)
     }
+
+    const state = this.activeStates.get(batchId)!
 
     if (state.status !== 'paused') {
       throw new Error(`Batch "${batchId}" is not paused (status: ${state.status})`)
@@ -234,9 +198,8 @@ export class BatchProcessor {
     saveBatchState(this.options.workspaceRootPath, state)
 
     log.info(`[BatchProcessor] Resumed batch "${batchId}"`)
-    await this.dispatchNext(batchId)
 
-    return computeProgress(state)
+    return this.beginDispatching(batchId, state)
   }
 
   /**
@@ -325,7 +288,76 @@ export class BatchProcessor {
   }
 
   // ============================================================================
-  // Internal Methods
+  // Internal: Activation & Dispatching
+  // ============================================================================
+
+  /**
+   * Ensure a batch is loaded into memory: validate config, load data source,
+   * create or recover state. Called by start() and resume() before dispatching.
+   */
+  private ensureActive(batchId: string): BatchState {
+    const config = this.getBatchConfig(batchId)
+    if (!config) {
+      throw new Error(`Batch "${batchId}" not found in configuration`)
+    }
+    if (config.enabled === false) {
+      throw new Error(`Batch "${batchId}" is disabled`)
+    }
+
+    // Load data source
+    const items = loadBatchItems(config.source, this.options.workspaceRootPath)
+    log.info(`[BatchProcessor] Loaded ${items.length} items from ${config.source.path} for batch "${batchId}"`)
+
+    const itemMap = new Map<string, BatchItem>()
+    for (const item of items) {
+      itemMap.set(item.id, item)
+    }
+    this.batchItems.set(batchId, itemMap)
+
+    // Create or recover state
+    let state = loadBatchState(this.options.workspaceRootPath, batchId)
+
+    if (state) {
+      log.info(`[BatchProcessor] Recovering batch "${batchId}" from persisted state`)
+      // Reset running items to pending (sessions may have been lost on restart)
+      for (const [itemId, itemState] of Object.entries(state.items)) {
+        if (itemState.status === 'running') {
+          updateItemState(state, itemId, { status: 'pending', sessionId: undefined })
+        }
+      }
+      // Add any new items that appeared in the data source
+      for (const item of items) {
+        if (!(item.id in state.items)) {
+          state.items[item.id] = { status: 'pending', retryCount: 0 }
+          state.totalItems++
+        }
+      }
+    } else {
+      state = createInitialBatchState(batchId, items.map((i) => i.id))
+    }
+
+    this.activeStates.set(batchId, state)
+    return state
+  }
+
+  /**
+   * Emit initial progress and kick off background dispatching.
+   * Returns the progress snapshot for the caller.
+   */
+  private beginDispatching(batchId: string, state: BatchState): BatchProgress {
+    const progress = computeProgress(state)
+    this.options.onProgress?.(progress)
+
+    this.dispatchNext(batchId).catch((error) => {
+      log.error(`[BatchProcessor] Failed to dispatch items for batch "${batchId}":`, error)
+      this.options.onError?.(batchId, error instanceof Error ? error : new Error(String(error)))
+    })
+
+    return progress
+  }
+
+  // ============================================================================
+  // Internal: Dispatch Pipeline
   // ============================================================================
 
   /**
@@ -365,6 +397,11 @@ export class BatchProcessor {
       toDispatch.map((itemId) => this.dispatchItem(batchId, itemId, config))
     )
 
+    // Notify progress after dispatch round so UI sees item state transitions
+    if (toDispatch.length > 0 && this.activeStates.has(batchId)) {
+      this.options.onProgress?.(computeProgress(state))
+    }
+
     // Check if all items finished during dispatch (e.g. all session creations failed)
     if (isBatchDone(state)) {
       this.completeBatch(batchId)
@@ -393,10 +430,11 @@ export class BatchProcessor {
     // Expand prompt template with item variables
     const expandedPrompt = expandEnvVars(config.action.prompt, env)
 
-    // Mark as running
+    // Mark as running with truncated prompt summary for UI display
     updateItemState(state, itemId, {
       status: 'running',
       startedAt: Date.now(),
+      summary: expandedPrompt.length > 100 ? expandedPrompt.slice(0, 100) + '…' : expandedPrompt,
     })
     saveBatchState(this.options.workspaceRootPath, state)
 
@@ -414,6 +452,12 @@ export class BatchProcessor {
 
       const result = await this.options.onExecutePrompt(params)
 
+      // After await, batch may have been stopped/deleted — abort if so
+      if (!this.activeStates.has(batchId)) {
+        log.debug(`[BatchProcessor] Batch "${batchId}" was stopped during dispatch of item "${itemId}", skipping state update`)
+        return
+      }
+
       // Record session mapping for completion callback
       updateItemState(state, itemId, { sessionId: result.sessionId })
       this.sessionToItem.set(result.sessionId, { batchId, itemId })
@@ -421,6 +465,12 @@ export class BatchProcessor {
 
       log.debug(`[BatchProcessor] Dispatched item "${itemId}" → session ${result.sessionId}`)
     } catch (error) {
+      // After await, batch may have been stopped/deleted — abort if so
+      if (!this.activeStates.has(batchId)) {
+        log.debug(`[BatchProcessor] Batch "${batchId}" was stopped during dispatch of item "${itemId}", ignoring error`)
+        return
+      }
+
       log.error(`[BatchProcessor] Failed to dispatch item "${itemId}":`, error)
       updateItemState(state, itemId, {
         status: 'failed',

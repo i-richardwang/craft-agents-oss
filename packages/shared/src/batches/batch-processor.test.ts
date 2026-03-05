@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { BatchProcessor } from './batch-processor.ts'
 import { loadBatchState } from './batch-state-manager.ts'
+import { BATCH_STATE_FILE_PREFIX } from './constants.ts'
 import type { BatchSystemOptions, BatchExecutePromptParams, BatchProgress } from './types.ts'
+
+/** Wait for background dispatch (fire-and-forget) to settle */
+const tick = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function createTestSetup() {
   const tempDir = mkdtempSync(join(tmpdir(), 'batch-processor-'))
@@ -132,41 +136,58 @@ describe('BatchProcessor', () => {
   // =========================================================================
 
   describe('start', () => {
-    it('should start a batch and dispatch items up to maxConcurrency', async () => {
-      const progress = await setup.processor.start('test-batch')
+    it('should return progress immediately with all items pending', () => {
+      const progress = setup.processor.start('test-batch')
 
       expect(progress.status).toBe('running')
       expect(progress.totalItems).toBe(3)
-      expect(progress.runningItems).toBe(2) // maxConcurrency = 2
-      expect(progress.pendingItems).toBe(1)
+      expect(progress.pendingItems).toBe(3)
+    })
 
-      expect(setup.createdSessions).toHaveLength(2)
+    it('should dispatch items up to maxConcurrency in background', async () => {
+      setup.processor.start('test-batch')
+      await tick()
+
+      expect(setup.createdSessions).toHaveLength(2) // maxConcurrency = 2
+      const state = setup.processor.getState('test-batch')
+      const running = Object.values(state!.items).filter(i => i.status === 'running')
+      expect(running).toHaveLength(2)
+    })
+
+    it('should emit onProgress immediately on start', () => {
+      setup.progressUpdates.length = 0
+      setup.processor.start('test-batch')
+
+      // Should have at least the initial progress event
+      expect(setup.progressUpdates.length).toBeGreaterThanOrEqual(1)
+      expect(setup.progressUpdates[0]!.status).toBe('running')
     })
 
     it('should expand environment variables in prompt', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
 
-      // Check that the prompt was expanded with item fields
       const firstSession = setup.createdSessions[0]!
       expect(firstSession.params.prompt).toContain('Acme Corp')
       expect(firstSession.params.prompt).toContain('https://acme.com')
     })
 
     it('should pass labels from action config', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       expect(setup.createdSessions[0]!.params.labels).toEqual(['batch'])
     })
 
-    it('should throw for disabled batch', async () => {
-      await expect(setup.processor.start('disabled-batch')).rejects.toThrow('disabled')
+    it('should throw for disabled batch', () => {
+      expect(() => setup.processor.start('disabled-batch')).toThrow('disabled')
     })
 
-    it('should throw for non-existent batch', async () => {
-      await expect(setup.processor.start('nonexistent')).rejects.toThrow('not found')
+    it('should throw for non-existent batch', () => {
+      expect(() => setup.processor.start('nonexistent')).toThrow('not found')
     })
 
-    it('should persist state to disk', async () => {
-      await setup.processor.start('test-batch')
+    it('should persist state to disk', () => {
+      setup.processor.start('test-batch')
 
       const state = loadBatchState(setup.tempDir, 'test-batch')
       expect(state).not.toBeNull()
@@ -181,47 +202,47 @@ describe('BatchProcessor', () => {
 
   describe('onSessionComplete', () => {
     it('should mark item as completed on success', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
 
       const sessionId = setup.createdSessions[0]!.sessionId
       const handled = setup.processor.onSessionComplete(sessionId, 'complete')
 
       expect(handled).toBe(true)
       const state = setup.processor.getState('test-batch')
-      const completedItem = Object.values(state!.items).find((i) => i.sessionId === sessionId)
-      // After completion, find the completed item
       const completedItems = Object.values(state!.items).filter((i) => i.status === 'completed')
       expect(completedItems).toHaveLength(1)
     })
 
     it('should dispatch next item after completion', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       expect(setup.createdSessions).toHaveLength(2) // maxConcurrency = 2
 
       // Complete one session → should dispatch the 3rd item
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'complete')
 
-      // Wait for async dispatch
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
 
       expect(setup.createdSessions).toHaveLength(3) // All 3 dispatched
     })
 
     it('should complete batch when all items are done', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
 
       // Complete all sessions
       for (const session of [...setup.createdSessions]) {
         setup.processor.onSessionComplete(session.sessionId, 'complete')
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await tick()
       }
 
       // Complete the 3rd session that was dispatched
       const thirdSession = setup.createdSessions[2]
       if (thirdSession) {
         setup.processor.onSessionComplete(thirdSession.sessionId, 'complete')
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await tick()
       }
 
       const state = setup.processor.getState('test-batch')
@@ -230,7 +251,8 @@ describe('BatchProcessor', () => {
     })
 
     it('should mark item as failed on error', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
 
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'error')
@@ -246,14 +268,16 @@ describe('BatchProcessor', () => {
     })
 
     it('should send progress updates', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       setup.progressUpdates.length = 0
 
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'complete')
 
-      expect(setup.progressUpdates).toHaveLength(1)
-      expect(setup.progressUpdates[0]!.completedItems).toBe(1)
+      expect(setup.progressUpdates.length).toBeGreaterThanOrEqual(1)
+      const completionUpdate = setup.progressUpdates.find(p => p.completedItems === 1)
+      expect(completionUpdate).toBeDefined()
     })
   })
 
@@ -263,18 +287,16 @@ describe('BatchProcessor', () => {
 
   describe('retry', () => {
     it('should retry failed items when retryOnFailure is enabled', async () => {
-      await setup.processor.start('retry-batch')
+      setup.processor.start('retry-batch')
+      await tick()
       expect(setup.createdSessions).toHaveLength(1) // maxConcurrency = 1
 
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'error')
 
-      // Wait for dispatch
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
 
-      // The same item should be retried (now pending → dispatched again)
       const state = setup.processor.getState('retry-batch')
-      // Either the item is running again (retried) or the next item was dispatched
       const runningItems = Object.values(state!.items).filter((i) => i.status === 'running')
       expect(runningItems.length).toBeGreaterThanOrEqual(1)
     })
@@ -285,23 +307,34 @@ describe('BatchProcessor', () => {
   // =========================================================================
 
   describe('pause / resume', () => {
-    it('should pause a running batch', async () => {
-      await setup.processor.start('test-batch')
+    it('should pause a running batch', () => {
+      setup.processor.start('test-batch')
       const progress = setup.processor.pause('test-batch')
 
       expect(progress.status).toBe('paused')
     })
 
-    it('should resume a paused batch', async () => {
-      await setup.processor.start('test-batch')
+    it('should emit onProgress on pause', () => {
+      setup.processor.start('test-batch')
+      setup.progressUpdates.length = 0
+
       setup.processor.pause('test-batch')
-      const progress = await setup.processor.resume('test-batch')
+
+      expect(setup.progressUpdates.length).toBeGreaterThanOrEqual(1)
+      expect(setup.progressUpdates[0]!.status).toBe('paused')
+    })
+
+    it('should resume a paused batch', () => {
+      setup.processor.start('test-batch')
+      setup.processor.pause('test-batch')
+      const progress = setup.processor.resume('test-batch')
 
       expect(progress.status).toBe('running')
     })
 
     it('should not dispatch new items while paused', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       const initialCount = setup.createdSessions.length
 
       setup.processor.pause('test-batch')
@@ -309,9 +342,9 @@ describe('BatchProcessor', () => {
       // Complete a session — should not dispatch new items
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'complete')
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
 
-      expect(setup.createdSessions.length).toBe(initialCount) // No new sessions
+      expect(setup.createdSessions.length).toBe(initialCount)
     })
 
     it('should throw when pausing inactive batch', () => {
@@ -319,8 +352,9 @@ describe('BatchProcessor', () => {
     })
 
     it('should throw when resuming non-paused batch', async () => {
-      await setup.processor.start('test-batch')
-      await expect(setup.processor.resume('test-batch')).rejects.toThrow('not paused')
+      setup.processor.start('test-batch')
+      await tick()
+      expect(() => setup.processor.resume('test-batch')).toThrow('not paused')
     })
   })
 
@@ -330,21 +364,20 @@ describe('BatchProcessor', () => {
 
   describe('resume from persisted state', () => {
     it('should resume from disk state on start', async () => {
-      // Start and create some progress
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       const sessionId = setup.createdSessions[0]!.sessionId
       setup.processor.onSessionComplete(sessionId, 'complete')
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await tick()
 
-      // Simulate restart by creating a new processor
+      // Simulate restart
       setup.processor.dispose()
       const newProcessor = new BatchProcessor({
         ...setup.processor['options'],
         onExecutePrompt: setup.executePrompt,
       })
 
-      const progress = await newProcessor.start('test-batch')
-      // Should have recovered the completed item
+      const progress = newProcessor.start('test-batch')
       expect(progress.completedItems).toBe(1)
       newProcessor.dispose()
     })
@@ -355,12 +388,93 @@ describe('BatchProcessor', () => {
   // =========================================================================
 
   describe('dispose', () => {
-    it('should save active batches as paused', async () => {
-      await setup.processor.start('test-batch')
+    it('should save active batches as paused', () => {
+      setup.processor.start('test-batch')
       setup.processor.dispose()
 
       const state = loadBatchState(setup.tempDir, 'test-batch')
       expect(state!.status).toBe('paused')
+    })
+  })
+
+  // =========================================================================
+  // Stop & Race Condition
+  // =========================================================================
+
+  describe('stop', () => {
+    it('should not resurrect state file after stop during in-flight dispatch', async () => {
+      let resolveDispatch: (() => void) | undefined
+      const slowExecutePrompt = mock(async (_params: BatchExecutePromptParams) => {
+        await new Promise<void>((resolve) => { resolveDispatch = resolve })
+        return { sessionId: `session-slow` }
+      })
+
+      const tempDir = mkdtempSync(join(tmpdir(), 'batch-stop-race-'))
+      writeFileSync(join(tempDir, 'companies.json'), JSON.stringify([
+        { id: 'acme', name: 'Acme Corp', url: 'https://acme.com' },
+      ]))
+      writeFileSync(join(tempDir, 'batches.json'), JSON.stringify({
+        version: 1,
+        batches: [{
+          id: 'race-batch',
+          name: 'Race Test',
+          source: { type: 'json', path: 'companies.json', idField: 'id' },
+          execution: { maxConcurrency: 1 },
+          action: { type: 'prompt', prompt: 'test $BATCH_ITEM_NAME' },
+        }],
+      }))
+
+      const processor = new BatchProcessor({
+        workspaceRootPath: tempDir,
+        workspaceId: 'test-workspace',
+        onExecutePrompt: slowExecutePrompt,
+      })
+
+      // Start — dispatch runs in background, blocked in slowExecutePrompt
+      processor.start('race-batch')
+
+      // Stop while dispatch is in-flight
+      processor.stop('race-batch')
+
+      // Delete the state file (like the IPC handler does)
+      const stateFilePath = join(tempDir, `${BATCH_STATE_FILE_PREFIX}race-batch.json`)
+      try { rmSync(stateFilePath) } catch { /* may not exist */ }
+
+      // Resolve the in-flight dispatch
+      resolveDispatch?.()
+      await tick()
+
+      // State file should NOT be resurrected
+      expect(existsSync(stateFilePath)).toBe(false)
+
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+  })
+
+  // =========================================================================
+  // Cold Restart + Resume
+  // =========================================================================
+
+  describe('resume after restart', () => {
+    it('should resume a paused batch after cold restart via resume()', () => {
+      setup.processor.start('test-batch')
+      setup.processor.pause('test-batch')
+      const stateBeforeRestart = loadBatchState(setup.tempDir, 'test-batch')
+      expect(stateBeforeRestart!.status).toBe('paused')
+
+      // Simulate cold restart
+      setup.processor.dispose()
+      const newProcessor = new BatchProcessor({
+        ...setup.processor['options'],
+        onExecutePrompt: setup.executePrompt,
+      })
+
+      // resume() should load from disk and resume
+      const progress = newProcessor.resume('test-batch')
+      expect(progress.status).toBe('running')
+      expect(progress.totalItems).toBe(3)
+
+      newProcessor.dispose()
     })
   })
 
@@ -375,7 +489,8 @@ describe('BatchProcessor', () => {
     })
 
     it('should return progress for active batch', async () => {
-      await setup.processor.start('test-batch')
+      setup.processor.start('test-batch')
+      await tick()
       const progress = setup.processor.getProgress('test-batch')
       expect(progress).not.toBeNull()
       expect(progress!.totalItems).toBe(3)

@@ -84,44 +84,29 @@ export function useBatches(
   // Shared lookup
   const findBatch = useCallback((id: string) => batches.find(b => b.id === id), [batches])
 
-  // Start a batch
+  // Start a batch — progress updates arrive via onProgress events
   const handleStartBatch = useCallback((batchId: string) => {
     if (!activeWorkspaceId) return
     window.electronAPI.startBatch(activeWorkspaceId, batchId)
-      .then((progress) => {
-        updateBatchProgress(progress)
-        toast.success('Batch started')
-      })
-      .catch((err: Error) => {
-        toast.error(`Failed to start batch: ${err.message}`)
-      })
-  }, [activeWorkspaceId, updateBatchProgress])
+      .then(() => { toast.success('Batch started') })
+      .catch((err: Error) => { toast.error(`Failed to start batch: ${err.message}`) })
+  }, [activeWorkspaceId])
 
   // Pause a batch
   const handlePauseBatch = useCallback((batchId: string) => {
     if (!activeWorkspaceId) return
     window.electronAPI.pauseBatch(activeWorkspaceId, batchId)
-      .then((progress) => {
-        updateBatchProgress(progress)
-        toast.success('Batch paused')
-      })
-      .catch((err: Error) => {
-        toast.error(`Failed to pause batch: ${err.message}`)
-      })
-  }, [activeWorkspaceId, updateBatchProgress])
+      .then(() => { toast.success('Batch paused') })
+      .catch((err: Error) => { toast.error(`Failed to pause batch: ${err.message}`) })
+  }, [activeWorkspaceId])
 
   // Resume a batch
   const handleResumeBatch = useCallback((batchId: string) => {
     if (!activeWorkspaceId) return
     window.electronAPI.resumeBatch(activeWorkspaceId, batchId)
-      .then((progress) => {
-        updateBatchProgress(progress)
-        toast.success('Batch resumed')
-      })
-      .catch((err: Error) => {
-        toast.error(`Failed to resume batch: ${err.message}`)
-      })
-  }, [activeWorkspaceId, updateBatchProgress])
+      .then(() => { toast.success('Batch resumed') })
+      .catch((err: Error) => { toast.error(`Failed to resume batch: ${err.message}`) })
+  }, [activeWorkspaceId])
 
   // Get full batch state (with items)
   const getBatchState = useCallback(async (batchId: string): Promise<BatchState | null> => {

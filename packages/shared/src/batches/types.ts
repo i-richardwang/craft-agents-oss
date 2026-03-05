@@ -91,6 +91,8 @@ export interface BatchItemState {
   retryCount: number
   /** Error message if failed */
   error?: string
+  /** Truncated expanded prompt (for display in item timeline) */
+  summary?: string
 }
 
 // ============================================================================

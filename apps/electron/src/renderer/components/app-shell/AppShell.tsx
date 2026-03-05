@@ -3127,6 +3127,18 @@ function AppShellContent({
                       {...getEditConfig('automation-config', activeWorkspace.rootPath)}
                     />
                   )}
+                  {/* Add Batch button */}
+                  {isBatchesNavigation(navState) && activeWorkspace && (
+                    <EditPopover
+                      trigger={
+                        <HeaderIconButton
+                          icon={<Plus className="h-4 w-4" />}
+                          tooltip="Add Batch"
+                        />
+                      }
+                      {...getEditConfig('batch-config', activeWorkspace.rootPath)}
+                    />
+                  )}
                 </>
               }
             />
