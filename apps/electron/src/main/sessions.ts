@@ -1133,6 +1133,7 @@ export class SessionManager {
                 pending.mentions,
                 pending.llmConnection,
                 pending.model,
+                true,
               )
             )
           )
@@ -1184,6 +1185,7 @@ export class SessionManager {
             params.mentions,
             params.llmConnection,
             params.model,
+            true,
           )
         },
         onProgress: (progress) => {
@@ -5896,6 +5898,7 @@ To view this task's output:
     mentions?: string[],
     llmConnection?: string,
     model?: string,
+    hidden?: boolean,
   ): Promise<{ sessionId: string }> {
     // Warn if llmConnection was specified but doesn't resolve
     if (llmConnection) {
@@ -5916,6 +5919,7 @@ To view this task's output:
       enabledSourceSlugs: resolved?.sourceSlugs,
       llmConnection,
       model,
+      hidden,
     })
 
     // Send the prompt
