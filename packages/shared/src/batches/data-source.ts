@@ -4,8 +4,8 @@
  * Loads and parses batch items from CSV, JSON, and JSONL files.
  */
 
-import { readFileSync } from 'fs'
-import { resolve, isAbsolute } from 'path'
+import { readFileSync } from 'node:fs'
+import { resolve, isAbsolute } from 'node:path'
 import type { BatchSource, BatchItem } from './types.ts'
 
 /**

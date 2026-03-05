@@ -6,9 +6,10 @@
  * independent sessions via the onExecutePrompt callback.
  */
 
-import { readFileSync } from 'fs'
-import { join } from 'path'
-import { randomBytes } from 'crypto'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { createLogger } from '../utils/debug.ts'
 import { BATCHES_CONFIG_FILE, DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_RETRIES, BATCH_ITEM_ENV_PREFIX } from './constants.ts'
 import { BatchesFileConfigSchema } from './schemas.ts'
 import { loadBatchItems } from './data-source.ts'
@@ -32,6 +33,8 @@ import type {
   BatchExecutePromptParams,
 } from './types.ts'
 
+const log = createLogger('batch-processor')
+
 export class BatchProcessor {
   private options: BatchSystemOptions
 
@@ -46,11 +49,42 @@ export class BatchProcessor {
 
   constructor(options: BatchSystemOptions) {
     this.options = options
+    log.debug(`[BatchProcessor] Created for workspace: ${options.workspaceId}`)
   }
 
-  // ==========================================================================
+  // ============================================================================
   // Configuration Management
-  // ==========================================================================
+  // ============================================================================
+
+  /**
+   * Backfill missing IDs in batches.json and write back to disk.
+   * Called once at init time to ensure all batches have stable, persisted IDs.
+   */
+  ensureConfigIds(): void {
+    const configPath = join(this.options.workspaceRootPath, BATCHES_CONFIG_FILE)
+    if (!existsSync(configPath)) return
+
+    try {
+      const content = readFileSync(configPath, 'utf-8')
+      const raw = JSON.parse(content)
+      if (!Array.isArray(raw?.batches)) return
+
+      let changed = false
+      for (const batch of raw.batches) {
+        if (typeof batch === 'object' && batch !== null && !batch.id) {
+          batch.id = randomBytes(3).toString('hex')
+          changed = true
+        }
+      }
+
+      if (changed) {
+        writeFileSync(configPath, JSON.stringify(raw, null, 2) + '\n', 'utf-8')
+        log.info(`[BatchProcessor] Backfilled missing batch IDs in batches.json`)
+      }
+    } catch {
+      // Non-critical: IDs will be assigned on next mutation
+    }
+  }
 
   /**
    * Load and validate batches.json from the workspace root.
@@ -62,22 +96,19 @@ export class BatchProcessor {
       const raw = JSON.parse(content)
       const result = BatchesFileConfigSchema.safeParse(raw)
       if (!result.success) {
+        log.error(`[BatchProcessor] Invalid batches.json: ${result.error.message}`)
         this.options.onError?.('config', new Error(`Invalid batches.json: ${result.error.message}`))
         return null
       }
 
-      // Auto-generate IDs for batches that don't have one
-      for (const batch of result.data.batches) {
-        if (!batch.id) {
-          batch.id = randomBytes(3).toString('hex')
-        }
-      }
-
+      log.debug(`[BatchProcessor] Loaded ${result.data.batches.length} batch definitions`)
       return result.data as BatchesFileConfig
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        log.debug(`[BatchProcessor] No batches.json found at ${configPath}`)
         return null // No config file is fine
       }
+      log.error(`[BatchProcessor] Failed to load batches.json:`, error)
       this.options.onError?.('config', error instanceof Error ? error : new Error(String(error)))
       return null
     }
@@ -107,9 +138,9 @@ export class BatchProcessor {
     })
   }
 
-  // ==========================================================================
+  // ============================================================================
   // Batch Lifecycle
-  // ==========================================================================
+  // ============================================================================
 
   /**
    * Start a batch. Loads data, creates/resumes state, begins dispatching.
@@ -126,6 +157,8 @@ export class BatchProcessor {
 
     // Load data source
     const items = loadBatchItems(config.source, this.options.workspaceRootPath)
+    log.info(`[BatchProcessor] Loaded ${items.length} items from ${config.source.path} for batch "${batchId}"`)
+
     const itemMap = new Map<string, BatchItem>()
     for (const item of items) {
       itemMap.set(item.id, item)
@@ -136,6 +169,7 @@ export class BatchProcessor {
     let state = loadBatchState(this.options.workspaceRootPath, batchId)
 
     if (state) {
+      log.info(`[BatchProcessor] Resuming batch "${batchId}" from persisted state`)
       // Resume: mark running items back to pending (sessions may have been lost)
       for (const [itemId, itemState] of Object.entries(state.items)) {
         if (itemState.status === 'running') {
@@ -159,6 +193,8 @@ export class BatchProcessor {
     this.activeStates.set(batchId, state)
     saveBatchState(this.options.workspaceRootPath, state)
 
+    log.info(`[BatchProcessor] Started batch "${batchId}" with ${state.totalItems} items (maxConcurrency: ${config.execution?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY})`)
+
     // Start dispatching
     await this.dispatchNext(batchId)
 
@@ -177,6 +213,7 @@ export class BatchProcessor {
     state.status = 'paused'
     saveBatchState(this.options.workspaceRootPath, state)
 
+    log.info(`[BatchProcessor] Paused batch "${batchId}"`)
     return computeProgress(state)
   }
 
@@ -196,6 +233,7 @@ export class BatchProcessor {
     state.status = 'running'
     saveBatchState(this.options.workspaceRootPath, state)
 
+    log.info(`[BatchProcessor] Resumed batch "${batchId}"`)
     await this.dispatchNext(batchId)
 
     return computeProgress(state)
@@ -216,9 +254,9 @@ export class BatchProcessor {
     return this.activeStates.get(batchId) ?? loadBatchState(this.options.workspaceRootPath, batchId)
   }
 
-  // ==========================================================================
+  // ============================================================================
   // Session Completion Callback
-  // ==========================================================================
+  // ============================================================================
 
   /**
    * Handle session completion. Called by SessionManager when a session stops.
@@ -241,6 +279,7 @@ export class BatchProcessor {
         status: 'completed',
         completedAt: Date.now(),
       })
+      log.debug(`[BatchProcessor] Item "${itemId}" completed in batch "${batchId}"`)
     } else {
       // Check retry eligibility
       const shouldRetry = config?.execution?.retryOnFailure &&
@@ -253,12 +292,14 @@ export class BatchProcessor {
           retryCount: itemState.retryCount + 1,
           error: `${reason} (retry ${itemState.retryCount + 1})`,
         })
+        log.info(`[BatchProcessor] Item "${itemId}" failed (${reason}), retrying (attempt ${itemState.retryCount + 1})`)
       } else {
         updateItemState(state, itemId, {
           status: 'failed',
           completedAt: Date.now(),
           error: reason,
         })
+        log.warn(`[BatchProcessor] Item "${itemId}" failed permanently in batch "${batchId}": ${reason}`)
       }
     }
 
@@ -271,6 +312,7 @@ export class BatchProcessor {
     } else if (state.status === 'running') {
       // Dispatch next items to fill concurrency slots
       this.dispatchNext(batchId).catch((error) => {
+        log.error(`[BatchProcessor] Failed to dispatch next items for batch "${batchId}":`, error)
         this.options.onError?.(batchId, error instanceof Error ? error : new Error(String(error)))
       })
     }
@@ -282,9 +324,9 @@ export class BatchProcessor {
     return true
   }
 
-  // ==========================================================================
+  // ============================================================================
   // Internal Methods
-  // ==========================================================================
+  // ============================================================================
 
   /**
    * Fill concurrency slots by dispatching pending items.
@@ -315,9 +357,18 @@ export class BatchProcessor {
     const slotsAvailable = maxConcurrency - runningCount
     const toDispatch = pendingIds.slice(0, slotsAvailable)
 
+    if (toDispatch.length > 0) {
+      log.debug(`[BatchProcessor] Dispatching ${toDispatch.length} items for batch "${batchId}" (running: ${runningCount}, pending: ${pendingIds.length})`)
+    }
+
     await Promise.allSettled(
       toDispatch.map((itemId) => this.dispatchItem(batchId, itemId, config))
     )
+
+    // Check if all items finished during dispatch (e.g. all session creations failed)
+    if (isBatchDone(state)) {
+      this.completeBatch(batchId)
+    }
   }
 
   /**
@@ -330,6 +381,7 @@ export class BatchProcessor {
     const itemMap = this.batchItems.get(batchId)
     const item = itemMap?.get(itemId)
     if (!item) {
+      log.warn(`[BatchProcessor] Item "${itemId}" not found in data source, skipping`)
       updateItemState(state, itemId, { status: 'skipped', error: 'Item not found in data source' })
       saveBatchState(this.options.workspaceRootPath, state)
       return
@@ -366,7 +418,10 @@ export class BatchProcessor {
       updateItemState(state, itemId, { sessionId: result.sessionId })
       this.sessionToItem.set(result.sessionId, { batchId, itemId })
       saveBatchState(this.options.workspaceRootPath, state)
+
+      log.debug(`[BatchProcessor] Dispatched item "${itemId}" → session ${result.sessionId}`)
     } catch (error) {
+      log.error(`[BatchProcessor] Failed to dispatch item "${itemId}":`, error)
       updateItemState(state, itemId, {
         status: 'failed',
         completedAt: Date.now(),
@@ -407,8 +462,29 @@ export class BatchProcessor {
 
     saveBatchState(this.options.workspaceRootPath, state)
 
+    log.info(`[BatchProcessor] Batch "${batchId}" ${state.status}: ${progress.completedItems} completed, ${progress.failedItems} failed`)
+
     this.options.onBatchComplete?.(batchId, state.status)
     this.options.onProgress?.(computeProgress(state))
+  }
+
+  /**
+   * Stop a specific batch and clean up its in-memory state.
+   * Running sessions will finish but no new items will be dispatched,
+   * and session completions will no longer write state back to disk.
+   */
+  stop(batchId: string): void {
+    this.activeStates.delete(batchId)
+    this.batchItems.delete(batchId)
+
+    // Remove all sessionToItem mappings for this batch
+    for (const [sessionId, mapping] of this.sessionToItem) {
+      if (mapping.batchId === batchId) {
+        this.sessionToItem.delete(sessionId)
+      }
+    }
+
+    log.info(`[BatchProcessor] Stopped batch "${batchId}" and cleaned up in-memory state`)
   }
 
   /**
@@ -419,10 +495,12 @@ export class BatchProcessor {
       if (state.status === 'running') {
         state.status = 'paused'
         saveBatchState(this.options.workspaceRootPath, state)
+        log.debug(`[BatchProcessor] Saved batch "${batchId}" as paused during dispose`)
       }
     }
     this.activeStates.clear()
     this.sessionToItem.clear()
     this.batchItems.clear()
+    log.debug(`[BatchProcessor] Disposed`)
   }
 }

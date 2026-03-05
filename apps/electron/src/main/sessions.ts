@@ -1063,6 +1063,7 @@ export class SessionManager {
         sessionLog.info(`Batches config changed in ${workspaceId}`)
         const batchProcessor = this.batchProcessors.get(workspaceRootPath)
         if (batchProcessor) {
+          batchProcessor.ensureConfigIds()
           batchProcessor.loadConfig()
           sessionLog.info(`Reloaded batch config for workspace ${workspaceId}`)
         }
@@ -1208,6 +1209,7 @@ export class SessionManager {
           sessionLog.error(`[Batch] Error in batch ${batchId}:`, error.message)
         },
       })
+      batchProcessor.ensureConfigIds()
       this.batchProcessors.set(workspaceRootPath, batchProcessor)
       sessionLog.info(`Initialized BatchProcessor for workspace ${workspaceId}`)
     }

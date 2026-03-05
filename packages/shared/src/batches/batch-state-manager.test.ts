@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   getBatchStatePath,
   loadBatchState,
@@ -10,8 +10,8 @@ import {
   updateItemState,
   computeProgress,
   isBatchDone,
-} from '../batch-state-manager.ts'
-import type { BatchState } from '../types.ts'
+} from './batch-state-manager.ts'
+import type { BatchState } from './types.ts'
 
 describe('batch-state-manager', () => {
   let tempDir: string

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { BatchProcessor } from '../batch-processor.ts'
-import { loadBatchState } from '../batch-state-manager.ts'
-import type { BatchSystemOptions, BatchExecutePromptParams, BatchProgress } from '../types.ts'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { BatchProcessor } from './batch-processor.ts'
+import { loadBatchState } from './batch-state-manager.ts'
+import type { BatchSystemOptions, BatchExecutePromptParams, BatchProgress } from './types.ts'
 
 function createTestSetup() {
   const tempDir = mkdtempSync(join(tmpdir(), 'batch-processor-'))

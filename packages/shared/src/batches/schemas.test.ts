@@ -6,7 +6,7 @@ import {
   BatchConfigSchema,
   BatchesFileConfigSchema,
   zodErrorToIssues,
-} from '../schemas.ts'
+} from './schemas.ts'
 
 describe('BatchSourceSchema', () => {
   it('should accept valid source', () => {

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
-import { mkdtempSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { loadBatchItems } from '../data-source.ts'
-import type { BatchSource } from '../types.ts'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { loadBatchItems } from './data-source.ts'
+import type { BatchSource } from './types.ts'
 
 describe('loadBatchItems', () => {
   let tempDir: string

@@ -18,6 +18,7 @@ import {
 } from '@/components/info'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { useActiveWorkspace } from '@/context/AppShellContext'
+import { useNavigation } from '@/contexts/NavigationContext'
 import { BatchAvatar } from './BatchAvatar'
 import { BatchMenu } from './BatchMenu'
 import { BatchProgressBar } from './BatchProgressBar'
@@ -39,7 +40,6 @@ export interface BatchInfoPageProps {
   onDuplicate?: () => void
   onDelete?: () => void
   getBatchState?: (batchId: string) => Promise<BatchState | null>
-  onNavigateToSession?: (sessionId: string) => void
   className?: string
 }
 
@@ -52,10 +52,10 @@ export function BatchInfoPage({
   onDuplicate,
   onDelete,
   getBatchState,
-  onNavigateToSession,
   className,
 }: BatchInfoPageProps) {
   const workspace = useActiveWorkspace()
+  const { navigateToSession } = useNavigation()
   const [batchState, setBatchState] = useState<BatchState | null>(null)
   const status: BatchStatus = batch.progress?.status ?? 'pending'
   const enabled = batch.enabled !== false
@@ -253,7 +253,7 @@ export function BatchInfoPage({
                         <td className="px-3 py-1.5">
                           {item.sessionId ? (
                             <button
-                              onClick={() => onNavigateToSession?.(item.sessionId!)}
+                              onClick={() => navigateToSession(item.sessionId!)}
                               className="text-accent hover:underline inline-flex items-center gap-0.5"
                             >
                               <span className="truncate max-w-[100px]">{item.sessionId.slice(0, 8)}</span>

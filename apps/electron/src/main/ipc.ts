@@ -3000,7 +3000,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     })
   })
 
-  // Delete a batch (remove from array, clean up state file)
+  // Delete a batch (stop if running, remove from array, clean up state file)
   ipcMain.handle(IPC_CHANNELS.BATCH_DELETE, async (_event, workspaceId: string, batchId: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
@@ -3008,6 +3008,10 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     await withBatchMutation(workspaceId, batchId, (batches, idx) => {
       batches.splice(idx, 1)
     })
+
+    // Stop after config mutation succeeds (stop is in-memory only, won't fail)
+    const processor = sessionManager.getBatchProcessor(workspace.rootPath)
+    processor?.stop(batchId)
 
     // Clean up state file
     try {

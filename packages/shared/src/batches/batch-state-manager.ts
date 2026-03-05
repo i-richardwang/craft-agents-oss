@@ -5,8 +5,8 @@
  * State files are stored as batch-state-{id}.json in the workspace root.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { BATCH_STATE_FILE_PREFIX } from './constants.ts'
 import type { BatchState, BatchItemState, BatchItemStatus, BatchProgress } from './types.ts'
 

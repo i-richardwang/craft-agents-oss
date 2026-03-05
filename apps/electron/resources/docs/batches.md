@@ -199,7 +199,7 @@ Generate reports from a JSON array of project records.
         "type": "prompt",
         "prompt": "Generate a quarterly status report for project $BATCH_ITEM_PROJECT_ID ($BATCH_ITEM_TITLE) in the $BATCH_ITEM_REGION region. Include budget analysis and key milestones.",
         "labels": ["Batch", "reports"],
-        "mentions": ["@project-docs"]
+        "mentions": ["project-docs"]
       }
     }
   ]
