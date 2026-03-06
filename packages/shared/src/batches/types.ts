@@ -157,6 +157,8 @@ export interface BatchExecutePromptParams {
     outputPath: string
     outputSchema?: Record<string, unknown>
   }
+  /** Human-readable name for the session (used as title and triggeredBy metadata) */
+  automationName?: string
 }
 
 export interface BatchSystemOptions {

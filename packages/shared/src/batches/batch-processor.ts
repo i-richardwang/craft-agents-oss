@@ -463,6 +463,7 @@ export class BatchProcessor {
         mentions: config.action.mentions,
         llmConnection: config.execution?.llmConnection,
         model: config.execution?.model,
+        automationName: `Batch: ${config.name} — ${itemId}`,
       }
 
       // Attach batch context for output collection

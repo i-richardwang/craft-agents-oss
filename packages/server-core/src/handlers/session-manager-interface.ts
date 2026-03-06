@@ -153,6 +153,7 @@ export interface ISessionManager {
     model?: string,
     hidden?: boolean,
     batchContext?: { batchId: string; itemId: string; outputPath: string; outputSchema?: Record<string, unknown> },
+    automationName?: string,
   ): Promise<{ sessionId: string }>
 
   // ---------------------------------------------------------------------------
