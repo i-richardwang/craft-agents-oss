@@ -1920,6 +1920,7 @@ export function shouldAllowToolInMode(
       const safeAllowedSessionTools = getSessionSafeAllowedToolNames({
         prefix: 'mcp__session__',
         includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,
+        includeBatchOutput: true,
       });
 
       if (safeAllowedSessionTools.has(toolName)) {

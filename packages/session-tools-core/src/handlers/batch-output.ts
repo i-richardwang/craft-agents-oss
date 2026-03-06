@@ -15,7 +15,7 @@ import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
 
 export interface BatchOutputArgs {
-  data: Record<string, unknown>;
+  data: Record<string, unknown> | string;
 }
 
 /**
@@ -84,6 +84,41 @@ function validateOutputSchema(
 }
 
 /**
+ * Coerce the `data` argument to a plain object.
+ *
+ * LLMs sometimes pass a stringified JSON blob instead of a proper object
+ * (e.g. `"data": "{\"key\":\"val\"}"` vs `"data": {"key":"val"}`).
+ * The schema accepts both forms; this function normalizes to object.
+ *
+ * Returns `{ data }` on success, or `{ error }` with a descriptive
+ * message when the input cannot be coerced.
+ */
+function coerceData(raw: Record<string, unknown> | string): { data: Record<string, unknown> } | { error: string } {
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { data: parsed as Record<string, unknown> };
+      }
+      return { error: 'The "data" parameter must be a JSON object, not ' + (Array.isArray(parsed) ? 'an array' : typeof parsed) + '.' };
+    } catch (e) {
+      const hint = e instanceof SyntaxError ? ` Parse error: ${e.message}` : '';
+      return {
+        error:
+          'The "data" parameter is a malformed JSON string.' + hint +
+          ' Ensure all special characters (especially double quotes) inside string values are properly escaped with backslash.',
+      };
+    }
+  }
+
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return { data: raw };
+  }
+
+  return { error: 'The "data" parameter must be a JSON object.' };
+}
+
+/**
  * Handle the batch_output tool call.
  *
  * Validates output data against the configured schema (if any), then
@@ -103,14 +138,16 @@ export async function handleBatchOutput(
 
   const { itemId, outputPath, outputSchema } = ctx.batchContext;
 
-  // Validate args.data is a non-empty object
-  if (!args.data || typeof args.data !== 'object' || Array.isArray(args.data)) {
-    return errorResponse('The "data" parameter must be a JSON object.');
+  // Normalize data: accept both object and stringified JSON
+  const coerced = coerceData(args.data);
+  if ('error' in coerced) {
+    return errorResponse(coerced.error);
   }
+  const data = coerced.data;
 
   // Validate against schema if configured
   if (outputSchema) {
-    const validation = validateOutputSchema(args.data, outputSchema);
+    const validation = validateOutputSchema(data, outputSchema);
     if (!validation.valid) {
       return errorResponse(
         `Output does not match the configured schema:\n${validation.errors.map(e => `  - ${e}`).join('\n')}\n\n` +
@@ -123,7 +160,7 @@ export async function handleBatchOutput(
   const record = {
     _item_id: itemId,
     _timestamp: new Date().toISOString(),
-    ...args.data,
+    ...data,
   };
 
   try {
@@ -139,7 +176,7 @@ export async function handleBatchOutput(
 
     return successResponse(
       `Output recorded for item "${itemId}" → ${outputPath}\n` +
-      `Fields: ${Object.keys(args.data).join(', ')}`,
+      `Fields: ${Object.keys(data).join(', ')}`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

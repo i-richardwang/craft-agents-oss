@@ -142,8 +142,10 @@ export const SendDeveloperFeedbackSchema = z.object({
 });
 
 export const BatchOutputSchema = z.object({
-  data: z.record(z.string(), z.unknown())
-    .describe('Structured output data for this batch item. Must conform to the output schema defined in batch config.'),
+  data: z.union([
+    z.record(z.string(), z.unknown()),
+    z.string(),
+  ]).describe('Structured output data as a JSON object (e.g., {"key": "value"}) or a JSON-encoded string. Must conform to the output schema defined in batch config.'),
 });
 
 // Browser tool schema (single CLI-like tool for all browser actions)

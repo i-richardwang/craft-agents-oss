@@ -527,6 +527,7 @@ export class BatchProcessor {
       '',
       'After completing your analysis, you **MUST** call the `batch_output` tool to record your structured result.',
       'Pass your result as the `data` parameter (a JSON object). Do NOT include `_item_id` or `_timestamp` — they are injected automatically.',
+      'Ensure double quotes inside string values are escaped with backslash (e.g. `\\"`).',
     ]
 
     if (config.output.schema) {

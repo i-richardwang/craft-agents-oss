@@ -202,7 +202,7 @@ describe('handleBatchOutput', () => {
     expect(result.isError).toBeFalsy()
   })
 
-  it('should reject non-object data', async () => {
+  it('should coerce a JSON-encoded string to an object', async () => {
     const outputPath = join(tempDir, 'output.jsonl')
     const ctx = createTestContext({
       batchId: 'batch-1',
@@ -211,7 +211,57 @@ describe('handleBatchOutput', () => {
     })
 
     const result = await handleBatchOutput(ctx, {
-      data: 'not an object' as any,
+      data: '{"summary": "parsed from string", "score": 88}',
+    })
+    expect(result.isError).toBeFalsy()
+
+    const record = JSON.parse(readFileSync(outputPath, 'utf-8').trim())
+    expect(record.summary).toBe('parsed from string')
+    expect(record.score).toBe(88)
+  })
+
+  it('should return parse error details for malformed JSON strings', async () => {
+    const outputPath = join(tempDir, 'output.jsonl')
+    const ctx = createTestContext({
+      batchId: 'batch-1',
+      itemId: 'item-1',
+      outputPath,
+    })
+
+    // Unescaped quotes inside string value
+    const malformed = '{"reason": "评论给出"还可以"的评价"}'
+    const result = await handleBatchOutput(ctx, { data: malformed })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]!.text).toContain('malformed JSON')
+    expect(result.content[0]!.text).toContain('Parse error')
+    expect(result.content[0]!.text).toContain('escaped with backslash')
+  })
+
+  it('should reject a non-JSON string', async () => {
+    const outputPath = join(tempDir, 'output.jsonl')
+    const ctx = createTestContext({
+      batchId: 'batch-1',
+      itemId: 'item-1',
+      outputPath,
+    })
+
+    const result = await handleBatchOutput(ctx, {
+      data: 'not valid json',
+    })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]!.text).toContain('malformed JSON')
+  })
+
+  it('should reject a JSON string that parses to a non-object', async () => {
+    const outputPath = join(tempDir, 'output.jsonl')
+    const ctx = createTestContext({
+      batchId: 'batch-1',
+      itemId: 'item-1',
+      outputPath,
+    })
+
+    const result = await handleBatchOutput(ctx, {
+      data: '[1, 2, 3]',
     })
     expect(result.isError).toBe(true)
     expect(result.content[0]!.text).toContain('JSON object')
