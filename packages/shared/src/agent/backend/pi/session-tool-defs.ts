@@ -16,9 +16,10 @@ export type SessionToolProxyDef = JsonSchemaToolDef;
 
 export { SESSION_TOOL_NAMES };
 
-export function getSessionToolProxyDefs(): SessionToolProxyDef[] {
+export function getSessionToolProxyDefs(opts?: { includeBatchOutput?: boolean }): SessionToolProxyDef[] {
   return getToolDefsAsJsonSchema({
     prefix: 'mcp__session__',
     includeDeveloperFeedback: FEATURE_FLAGS.developerFeedback,
+    includeBatchOutput: opts?.includeBatchOutput,
   });
 }

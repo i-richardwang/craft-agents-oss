@@ -419,7 +419,8 @@ export class PiAgent extends BaseAgent {
     // These tools (SubmitPlan, config_validate, source auth, call_llm, etc.)
     // are executed in the main process when the LLM calls them.
     this.assertBackendSessionToolParity();
-    const sessionToolDefs = getSessionToolProxyDefs();
+    const isBatchSession = !!getSessionBatchContext(this._sessionId);
+    const sessionToolDefs = getSessionToolProxyDefs({ includeBatchOutput: isBatchSession });
 
     // Patch call_llm description with provider-specific model hint
     if (this.config.miniModel) {
@@ -1168,6 +1169,7 @@ export class PiAgent extends BaseAgent {
       onAuthRequest: (request: unknown) => {
         this.onAuthRequest?.(request as any);
       },
+      batchContext: getSessionBatchContext(sessionId),
     });
 
     return this._sessionToolContext;
