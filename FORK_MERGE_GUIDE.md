@@ -4,7 +4,7 @@
 > Its purpose is to serve as a reference when merging upstream updates, helping to identify conflict zones,
 > understand the intent of each change, and make informed resolution decisions.
 >
-> **Last updated after:** v0.7.1 merge + batch session naming adaptation + Pi SDK batch_output fix
+> **Last updated after:** v0.7.2 merge
 
 ## Overview
 
@@ -630,3 +630,4 @@ When merging upstream updates:
 | v0.7.0 | 2026-03-06 | 9 (2 modify/delete + 7 content) | Major RPC/transport refactoring. Ported batch IPC handlers → `rpc/batches.ts`, preload methods → `channel-map.ts`, types → protocol layer. |
 | post-merge | 2026-03-06 | — | Batch refinements: LLM string coercion in batch_output, safe mode allowlist fix, ajv schema validation, one-shot menu simplification (removed enable/disable + restart), output instructions moved from user prompt to context injection. |
 | v0.7.1 | 2026-03-06 | 3 (`bun.lock`, `session-manager-interface.ts`, `SessionManager.ts`) | Version bump + session naming. Merged our `hidden`/`batchContext` with upstream's `automationName` param. Adapted batch processor to pass `automationName` for session titles and `triggeredBy` metadata. Upstream also added auth retry refactoring, spawn ENOENT recovery, PiAgent global token mutex, branch preflight timeout. |
+| v0.7.2 | 2026-03-10 | 5 (`bun.lock`, `ApiKeyInput.tsx`, `CLAUDE.md`, `claude-agent.ts`, `dto.ts`) | Island system, new provider presets (Minimax, Kimi Coding, OpenAI EU/US), app-level default thinking level, deferred SDK checks, staged typecheck flow, branch creation hardening. Multiple bug fixes: Pi provider routing (#363, subsumes our earlier `91c2cd4` fix), Google OAuth error (#300), status icon discovery (#358), shared session delete (#328), @mention subsequence search (#298). Conflict resolutions: kept our batch events + added upstream `message_annotations_updated`; kept batch ctx + added upstream diagnostics logging in `buildTextPrompt`/`buildSDKUserMessage`; used upstream's `resolvePresetStateForBaseUrlChange` for Pi routing (replaces our manual fix); kept our detailed CLAUDE.md. |
