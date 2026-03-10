@@ -3,7 +3,7 @@
 > Records all fork changes relative to `upstream/main` (lukilabs/craft-agents-oss).
 > Purpose: identify conflict zones, understand intent, make informed merge resolution decisions.
 >
-> **Last updated after:** post-v0.7.2 (batch CLI, preset fix, lite version flag)
+> **Last updated after:** lite tool/prompt exclusions (OAuth, browser, validation, template tools; debug/mermaid/template prompt sections)
 
 ## Overview
 
@@ -11,7 +11,7 @@ Our fork adds three categories of changes:
 
 1. **Batch Processing System** — Processes large lists of items (CSV/JSON/JSONL) by running a prompt action per item as an independent agent session. Modeled after the **Automations** architecture; if upstream refactors automations, batch code likely needs the same treatment.
 
-2. **Lite Version Build Flag** (`CRAFT_LITE_VERSION`) — Build-time flag that hides non-essential UI (What's New, Help menu, subscription providers, Backlog/Needs Review statuses). Replaces the old `lite` branch.
+2. **Lite Version Build Flag** (`CRAFT_LITE_VERSION`) — Build-time flag that hides non-essential UI (What's New, Help menu, subscription providers, Backlog/Needs Review statuses), excludes unused session tools (9 tools via `LITE_EXCLUDED_TOOLS`), and conditionally removes prompt sections (Browser Tools, Mermaid validation, Source Templates, Debug Mode) to reduce initial context. Replaces the old `lite` branch.
 
 3. **Preset Preservation Fix** — Fix to `resolvePresetStateForBaseUrlChange()` preserving Pi SDK provider routing when a preset points at a custom proxy endpoint.
 
@@ -84,17 +84,19 @@ These files are frequently touched by upstream and have substantial fork modific
 
 #### `packages/session-tools-core/src/tool-defs.ts`
 
-- Added `batch_output` tool def (with `safeMode: 'allow'`), `BatchOutputSchema`, `'batches'` target in `ConfigValidateSchema`
-- Extended `SessionToolFilterOptions` with `includeBatchOutput?: boolean`
-- Modified `getSessionToolDefs()` and `getToolDefsAsJsonSchema()` to filter/propagate
+- **Batch:** Added `batch_output` tool def (with `safeMode: 'allow'`), `BatchOutputSchema`, `'batches'` target in `ConfigValidateSchema`
+- **Batch:** Extended `SessionToolFilterOptions` with `includeBatchOutput?: boolean`
+- **Lite:** Added `LITE_EXCLUDED_TOOLS` set (9 tools: 4 OAuth, `browser_tool`, `mermaid_validate`, `skill_validate`, `render_template`), `liteMode?: boolean` to `SessionToolFilterOptions`
+- Modified `getSessionToolDefs()` and `getToolDefsAsJsonSchema()` to filter/propagate both `includeBatchOutput` and `liteMode`
 
-**Pattern:** `includeBatchOutput` mirrors `includeDeveloperFeedback`.
+**Pattern:** `includeBatchOutput` and `liteMode` both mirror `includeDeveloperFeedback`.
 
 #### `packages/shared/src/agent/session-scoped-tools.ts`
 
-- Added batch context registry: `registerSessionBatchContext()`, `getSessionBatchContext()`, `cleanupSessionBatchContext()`
-- Modified `getSessionScopedTools()`: passes `batchContext` to `createClaudeContext()`, derives `includeBatchOutput`
-- Modified `cleanupSessionScopedTools()`: also cleans up batch context
+- **Batch:** Added batch context registry: `registerSessionBatchContext()`, `getSessionBatchContext()`, `cleanupSessionBatchContext()`
+- **Batch:** Modified `getSessionScopedTools()`: passes `batchContext` to `createClaudeContext()`, derives `includeBatchOutput`
+- **Batch:** Modified `cleanupSessionScopedTools()`: also cleans up batch context
+- **Lite:** Added `liteMode: FEATURE_FLAGS.liteVersion` to `getSessionToolDefs()` call
 
 **Pattern:** Mirrors existing `sessionScopedToolsCache` Map registry.
 
@@ -161,6 +163,21 @@ Added `'batch'` to `CliDomainNamespace`, `batch` policy entry with `patternPrefi
 
 Added `batch-config` → `batch` mapping in `detectCliNamespaceFromConfigDetection()`, `craft-agent-batch` to token scan exemption.
 
+#### `packages/shared/src/prompts/system.ts` *(Lite)*
+
+Multiple `!FEATURE_FLAGS.liteVersion` conditionals spread across the system prompt:
+- Doc table: Mermaid and Browser Tools rows conditionally hidden
+- Browser Tools section (~50 lines) removed
+- Mermaid validation: Tools block, validate tip, doc reference removed (diagram rendering guidance preserved)
+- Source Templates section (~29 lines) removed
+- Debug mode context (~80 lines) suppressed via `&& !FEATURE_FLAGS.liteVersion` guard
+
+**Risk note:** Upstream frequently modifies the system prompt. If sections are rewritten or reordered, our conditionals may need adjustment.
+
+#### `packages/session-mcp-server/src/index.ts` *(Lite)*
+
+Added `FEATURE_FLAGS` import; passes `liteMode: FEATURE_FLAGS.liteVersion` to both `createSessionTools()` and `getSessionToolRegistry()` calls.
+
 #### `apps/electron/src/renderer/components/app-shell/TopBar.tsx` *(Lite)*
 
 Wrapped Help `<DropdownMenu>` with `{!FEATURE_FLAGS.liteVersion && (...)}`.
@@ -185,11 +202,11 @@ These are simple additive changes (exports, types, config entries) unlikely to c
 |------|--------|
 | `packages/shared/src/agent/index.ts` | Export `registerSessionBatchContext` |
 | `packages/shared/src/agent/core/types.ts` | Added `batchOutputSchema?` to `ContextBlockOptions` |
-| `packages/shared/src/agent/mode-manager.ts` | Added `includeBatchOutput: true` to safe mode allowlist |
-| `packages/shared/src/agent/backend/pi/session-tool-defs.ts` | Added `opts?: { includeBatchOutput? }` to `getSessionToolProxyDefs()` |
+| `packages/shared/src/agent/mode-manager.ts` | Added `includeBatchOutput: true` and `liteMode: FEATURE_FLAGS.liteVersion` to safe mode allowlist |
+| `packages/shared/src/agent/backend/pi/session-tool-defs.ts` | Added `opts?: { includeBatchOutput? }` to `getSessionToolProxyDefs()`; passes `liteMode: FEATURE_FLAGS.liteVersion` |
 | `packages/shared/src/docs/doc-links.ts` | Added `'batches'` to `DocFeature`, `batches` entry in `DOCS` |
 | `packages/shared/src/docs/index.ts` | Added `batches` to `DOC_REFS` |
-| `packages/shared/src/prompts/system.ts` | Added Batches row to doc reference table; added CLI batch doc reference |
+| `packages/shared/src/prompts/system.ts` | *(Batch)* Added Batches row to doc reference table; added CLI batch doc reference. *(Lite changes moved to MEDIUM risk above)* |
 | `packages/shared/CLAUDE.md` | Added batch import example, `batches/` in directory structure |
 | `packages/shared/package.json` | Added `"./batches"` subpath export |
 | `packages/shared/src/protocol/channels.ts` | Added `batches` namespace to `RPC_CHANNELS` |
@@ -220,14 +237,16 @@ When merging upstream updates:
 3. **HIGH-risk files** (always inspect):
    - `SessionManager.ts` — batch lifecycle in workspace init, session completion, dispose
    - `AppShell.tsx` — batch UI + lite conditionals span sidebar, header, content, dialog
-   - `tool-defs.ts` — batch tool registration and filter
-   - `session-scoped-tools.ts` — batch context registry in tool init flow
+   - `tool-defs.ts` — batch tool registration, `LITE_EXCLUDED_TOOLS` set, and filter options
+   - `session-scoped-tools.ts` — batch context registry + lite mode passthrough in tool init flow
 4. **If upstream changes `executePromptAutomation()` signature**: ensure `hidden`, `batchContext`, `automationName` passthrough works
 5. **If upstream moves automations utilities** (`expandEnvVars`, `sanitizeForShell`): update imports in `batch-processor.ts`
 6. **If upstream changes `resolvePresetStateForBaseUrlChange()`**: re-verify our fix
 7. **If upstream changes feature flags / Vite config**: preserve our `liteVersion` getter and `define` entry
 8. **If upstream changes default statuses**: ensure lite conditional logic covers new statuses
-9. **After merge, run tests**: `bun test packages/shared/src/batches/` and `bun test packages/session-tools-core/`
+9. **If upstream adds/removes/renames session tools**: check `LITE_EXCLUDED_TOOLS` in `tool-defs.ts` and update if needed
+10. **If upstream rewrites system prompt sections**: verify lite conditionals in `system.ts` still wrap the correct blocks (Browser Tools, Mermaid validation, Source Templates, Debug Mode, doc table rows)
+11. **After merge, run tests**: `bun test packages/shared/src/batches/` and `bun test packages/session-tools-core/`
 
 ---
 
@@ -240,3 +259,4 @@ When merging upstream updates:
 | v0.7.1 | 2026-03-06 | 3 | Session naming. Merged our `hidden`/`batchContext` with upstream's `automationName`. |
 | v0.7.2 | 2026-03-10 | 5 | Island system, new presets, thinking level, bug fixes. Resolved: batch events + `message_annotations_updated`; batch ctx + diagnostics logging; upstream's `resolvePresetStateForBaseUrlChange` for Pi routing. |
 | post-v0.7.2 | 2026-03-10 | — | Batch CLI (`packages/batch-cli/`), wrapper scripts, `cli-domains.ts` batch policy, `pre-tool-use.ts` detection. Preset preservation fix. Lite version build flag (`CRAFT_LITE_VERSION`). |
+| lite-tools | 2026-03-11 | — | Lite mode tool exclusions: `LITE_EXCLUDED_TOOLS` (9 tools: 4 OAuth, browser, mermaid_validate, skill_validate, render_template). System prompt conditionals for Browser Tools, Mermaid validation, Source Templates, Debug Mode sections. `liteMode` passthrough in 5 call sites. |
