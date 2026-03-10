@@ -3,9 +3,10 @@
  *
  * Resolution order:
  * 1. --workspace-root <path> CLI flag (explicit)
- * 2. CRAFT_AGENT_WORKSPACE_ROOT env var
- * 3. Walk up from CWD looking for batches.json or .craft-agent/ dir
- * 4. Fall back to CWD
+ * 2. CRAFT_WORKSPACE_PATH env var (injected by SessionManager for every agent bash session)
+ * 3. CRAFT_AGENT_WORKSPACE_ROOT env var (manual override)
+ * 4. Walk up from CWD looking for batches.json or .craft-agent/ dir
+ * 5. Fall back to CWD
  */
 
 import { existsSync } from 'node:fs'
@@ -14,6 +15,12 @@ import { join, dirname, resolve } from 'node:path'
 export function resolveWorkspaceRoot(explicitFlag?: string): string {
   if (explicitFlag) {
     return resolve(explicitFlag)
+  }
+
+  // CRAFT_WORKSPACE_PATH is injected by SessionManager into every agent bash session
+  const craftWorkspacePath = process.env['CRAFT_WORKSPACE_PATH']
+  if (craftWorkspacePath) {
+    return resolve(craftWorkspacePath)
   }
 
   const envVar = process.env['CRAFT_AGENT_WORKSPACE_ROOT']
