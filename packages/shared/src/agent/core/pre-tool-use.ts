@@ -417,10 +417,11 @@ function buildCliDomainBlockMessage(namespace: CliDomainNamespace, context: stri
   const policy = CLI_DOMAIN_POLICIES[namespace]
   const noun = namespace === 'automation' ? 'automation' : namespace
   const quickExamplesHeading = namespace === 'label' ? 'Quick examples:' : 'Examples:'
+  const cliInvocation = policy.patternPrefix ?? `craft-agent ${namespace}`
 
   return [
     `${context}`,
-    `Use \`craft-agent ${namespace} ...\` instead.`,
+    `Use \`${cliInvocation} ...\` instead.`,
     `Run \`${policy.helpCommand}\` for the full ${noun} command reference.`,
     '',
     quickExamplesHeading,
@@ -464,6 +465,7 @@ function detectCliNamespaceFromConfigDetection(detection: ConfigFileDetection): 
   if (detection.type === 'automations') return 'automation'
   if (detection.type === 'source') return 'source'
   if (detection.type === 'skill') return 'skill'
+  if (detection.type === 'batch-config') return 'batch'
   return null
 }
 
@@ -530,6 +532,11 @@ export function getConfigDomainBashRedirect(
   if (!command) return null;
 
   if (/^craft-agent\s+(label|automation|source|skill)\b/.test(command)) {
+    return null;
+  }
+
+  // Exempt separate-binary CLI commands (e.g. craft-agent-batch) from token scanning
+  if (/^craft-agent-batch\b/.test(command)) {
     return null;
   }
 

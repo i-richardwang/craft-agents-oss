@@ -13,7 +13,7 @@ describe('permissions craft-agent allowlist sync', () => {
     }
 
     const actual = (permissions.allowedBashPatterns ?? [])
-      .filter(entry => typeof entry.pattern === 'string' && entry.pattern.startsWith('^craft-agent\\s'))
+      .filter(entry => typeof entry.pattern === 'string' && entry.pattern.startsWith('^craft-agent'))
       .map(entry => ({ pattern: entry.pattern, comment: entry.comment ?? '' }))
       .sort((a, b) => a.pattern.localeCompare(b.pattern))
 

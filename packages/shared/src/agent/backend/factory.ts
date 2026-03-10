@@ -745,7 +745,7 @@ export async function testBackendConnection(args: {
     try {
       const timeoutMs = args.timeoutMs ?? 20000;
       const text = await Promise.race([
-        agent.runMiniCompletion('Say ok'),
+        agent.runMiniCompletion('Who are you? Briefly introduce yourself.'),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Connection test timed out')), timeoutMs)
         ),

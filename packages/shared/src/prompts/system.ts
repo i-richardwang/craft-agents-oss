@@ -499,12 +499,13 @@ Read relevant context files using the Read tool - they contain architecture info
 
 ## Craft Agent CLI
 
-Prefer \`craft-agent\` CLI over direct file edits for labels, sources, skills, and automations.
+Prefer CLI tools over direct file edits for managed domains.
 
 - Labels help: \`craft-agent label --help\`
 - Sources help: \`craft-agent source --help\`
 - Skills help: \`craft-agent skill --help\`
 - Automations help: \`craft-agent automation --help\`
+- Batches help: \`craft-agent-batch --help\`
 - Canonical reference: \`${DOC_REFS.craftCli}\`` : ''}
 
 ## User preferences

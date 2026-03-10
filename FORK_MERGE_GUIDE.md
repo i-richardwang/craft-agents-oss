@@ -131,7 +131,33 @@ These files are entirely new. They won't conflict unless upstream adds a similar
 
 | File | Purpose |
 |------|---------|
-| `apps/electron/resources/docs/batches.md` | 381-line agent reference doc (mirrors `automations.md` structure) |
+| `apps/electron/resources/docs/batches.md` | Agent reference doc: full schema, data sources, prompt templates, output config, lifecycle, validation. Includes CLI-first callout and `craft-agent-batch` command listing (mirrors `automations.md` structure) |
+| `apps/electron/resources/docs/craft-cli.md` | Added `<!-- cli:batch:start/end -->` section documenting `craft-agent-batch` commands and flags |
+
+### 1.7 Batch CLI — `packages/batch-cli/`
+
+Standalone binary providing `craft-agent-batch` commands for managing `batches.json`. Named `craft-agent-batch` (not `craft-agent`) to avoid conflicting with the private `craft-agent` CLI binary that handles other domains.
+
+| File | Purpose |
+|------|---------|
+| `package.json` | Package config; `bin.craft-agent-batch` → `src/index.ts` |
+| `tsconfig.json` | TypeScript config following `apps/cli` pattern with workspace path mappings |
+| `src/index.ts` | Entry point: arg parser, subcommand router, `--help` / `--version` |
+| `src/workspace.ts` | Workspace root resolution: `--workspace-root` flag → env var → walk-up → CWD |
+| `src/format.ts` | Plain-text table, progress bar, ANSI color helpers (TTY-aware) |
+| `src/commands/list.ts` | `craft-agent-batch list` — reads `batches.json` + state files |
+| `src/commands/get.ts` | `craft-agent-batch get <id>` — find by id or name prefix, JSON output |
+| `src/commands/validate.ts` | `craft-agent-batch validate` — calls `validateBatches()`, exit 1 on errors |
+| `src/commands/status.ts` | `craft-agent-batch status <id> [--items]` — progress bar + optional per-item table |
+| `src/commands/create.ts` | `craft-agent-batch create` — generates 6-char hex id, validates, writes `batches.json` |
+| `src/commands/update.ts` | `craft-agent-batch update <id> --json` — deep-merge patch, validates, writes |
+| `src/commands/enable.ts` | `craft-agent-batch enable/disable <id>` — convenience wrappers over update |
+
+**Key design decisions:**
+- All business logic delegates to `@craft-agent/shared/batches` APIs — zero duplicated logic
+- `patternPrefix: 'craft-agent-batch'` added to `cli-domains.ts` batch policy — allows pattern generator to emit correct binary name in bash patterns and block messages
+- Read operations (`list`, `get`, `validate`, `status`) are in `readActions` → auto-allowed in Explore mode via generated bash patterns in `default.json`
+- `detectCliNamespaceFromConfigDetection` in `pre-tool-use.ts` includes `batch-config` → `batch` so Write/Edit to `batches.json` via file tools is redirected to `craft-agent-batch` (consistent with automations redirect)
 
 ---
 

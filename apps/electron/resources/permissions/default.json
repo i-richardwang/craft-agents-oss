@@ -126,6 +126,10 @@
       "comment": "craft-agent theme read-only operations"
     },
     {
+      "pattern": "^craft-agent-batch\\s+(list|get|validate|status)\\b",
+      "comment": "craft-agent-batch read-only operations"
+    },
+    {
       "pattern": "^craft-agent\\s*$",
       "comment": "craft-agent bare invocation (prints help)"
     },
@@ -140,6 +144,14 @@
     {
       "pattern": "^craft-agent\\s+--(help|version|discover)\\b",
       "comment": "craft-agent global flags"
+    },
+    {
+      "pattern": "^craft-agent-batch\\s*$",
+      "comment": "craft-agent-batch bare invocation (prints help)"
+    },
+    {
+      "pattern": "^craft-agent-batch\\s+--(help|version)\\b",
+      "comment": "craft-agent-batch global flags"
     },
     {
       "pattern": "^find\\b",

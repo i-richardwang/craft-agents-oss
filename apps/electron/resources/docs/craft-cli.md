@@ -367,6 +367,76 @@ craft-agent theme reset-override
 
 ---
 
+<!-- cli:batch:start -->
+## Batch
+
+Manage batch processing jobs stored in `batches.json`.
+
+> **Note:** Batch commands use a separate binary `craft-agent-batch` (not `craft-agent`).
+> This binary ships with the `@craft-agent/batch-cli` package and has plain-text output
+> (not the JSON envelope format of the main `craft-agent` CLI).
+
+### Commands
+- `craft-agent-batch list`
+- `craft-agent-batch get <id>`
+- `craft-agent-batch validate`
+- `craft-agent-batch status <id> [--items]`
+- `craft-agent-batch create` (see flags below)
+- `craft-agent-batch update <id> --json '{...}'`
+- `craft-agent-batch enable <id>`
+- `craft-agent-batch disable <id>`
+- `craft-agent-batch delete <id>`
+
+### Flags for `batch create`
+
+| Flag | Description |
+|------|-------------|
+| `--name "<name>"` | **(required)** Display name for the batch |
+| `--source <path>` | **(required)** Path to data source file (`.csv`, `.json`, or `.jsonl`) |
+| `--id-field <field>` | **(required)** Field name used as the unique item identifier |
+| `--prompt "..."` | **(required)** Prompt template with `$BATCH_ITEM_<FIELD>` placeholders |
+| `--concurrency <n>` | Max concurrent sessions (default: 3) |
+| `--model "<model-id>"` | Model ID for created sessions |
+| `--connection "<slug>"` | LLM connection slug |
+| `--permission-mode safe\|ask\|allow-all` | Permission level for created sessions |
+| `--label "<label>"` | Label to apply to created sessions (repeatable) |
+
+### Global flags
+- `--workspace-root <path>` — Override workspace root (default: auto-detected)
+- `--json` — Machine-readable JSON output (for list/get/validate/status)
+- `--help`, `--version`
+
+### Examples
+
+```bash
+# Read operations (allowed in Explore mode)
+craft-agent-batch list
+craft-agent-batch get abc123
+craft-agent-batch validate
+craft-agent-batch status abc123
+craft-agent-batch status abc123 --items
+
+# Write operations
+craft-agent-batch create --name "User Analysis" --source data/users.csv --id-field user_id --prompt "Analyse user $BATCH_ITEM_USER_ID"
+craft-agent-batch create --name "Reports" --source reports.json --id-field report_id --prompt "Generate report for $BATCH_ITEM_REPORT_ID" --concurrency 5 --permission-mode safe
+craft-agent-batch update abc123 --json '{"enabled":false}'
+craft-agent-batch update abc123 --json '{"execution":{"maxConcurrency":10}}'
+craft-agent-batch enable abc123
+craft-agent-batch disable abc123
+craft-agent-batch delete abc123
+```
+
+### Notes
+- `list` shows batch id, name, enabled state, status, and item progress counts.
+- `status` displays a progress bar; `--items` adds a per-item breakdown table.
+- `update` performs a deep-merge patch — only specified fields are changed.
+- `delete` removes the batch from `batches.json` and cleans up its `batch-state-{id}.json` file.
+- `create` infers source type from the file extension (`.csv` → `csv`, `.json` → `json`, `.jsonl` → `jsonl`).
+- Workspace root is auto-detected by walking up from CWD looking for `batches.json` or `.craft-agent/`.
+<!-- cli:batch:end -->
+
+---
+
 ## Output contract
 
 All commands return a single JSON envelope on stdout.

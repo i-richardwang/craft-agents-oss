@@ -1,4 +1,4 @@
-export type CliDomainNamespace = 'label' | 'source' | 'skill' | 'automation' | 'permission' | 'theme'
+export type CliDomainNamespace = 'label' | 'source' | 'skill' | 'automation' | 'permission' | 'theme' | 'batch'
 
 export interface CliDomainPolicy {
   namespace: CliDomainNamespace
@@ -8,6 +8,13 @@ export interface CliDomainPolicy {
   quickExamples: string[]
   /** Optional workspace-relative paths guarded for direct Bash operations */
   bashGuardPaths?: string[]
+  /**
+   * Optional override for the bash pattern prefix.
+   * When set, patterns use `^{patternPrefix}\s+(actions)\b` instead of
+   * the default `^craft-agent\s+{namespace}\s+(actions)\b`.
+   * Use when the domain is served by a separate binary (not the main craft-agent CLI).
+   */
+  patternPrefix?: string
 }
 
 const POLICIES: Record<CliDomainNamespace, CliDomainPolicy> = {
@@ -88,6 +95,22 @@ const POLICIES: Record<CliDomainNamespace, CliDomainPolicy> = {
     ],
     bashGuardPaths: ['config.json', 'theme.json', 'themes/*.json'],
   },
+  batch: {
+    namespace: 'batch',
+    helpCommand: 'craft-agent-batch --help',
+    workspacePathScopes: ['batches.json', 'batch-state-*.json'],
+    readActions: ['list', 'get', 'validate', 'status'],
+    quickExamples: [
+      'craft-agent-batch list',
+      'craft-agent-batch get <id>',
+      'craft-agent-batch validate',
+      'craft-agent-batch status <id>',
+      'craft-agent-batch create --name "My batch" --source data.csv --id-field id --prompt "Process $BATCH_ITEM_id"',
+      'craft-agent-batch update <id> --json \'{"enabled":false}\'',
+    ],
+    bashGuardPaths: ['batches.json', 'batch-state-*.json'],
+    patternPrefix: 'craft-agent-batch',
+  },
 }
 
 export const CLI_DOMAIN_POLICIES = POLICIES
@@ -139,23 +162,43 @@ export interface BashPatternRule {
  */
 export function getCraftAgentReadOnlyBashPatterns(): BashPatternRule[] {
   const namespaces = Object.keys(POLICIES) as CliDomainNamespace[]
-  const namespaceAlternation = namespaces.join('|')
+
+  // Separate namespaces: those served by the main craft-agent binary vs separate binaries
+  const mainNamespaces = namespaces.filter(ns => !POLICIES[ns].patternPrefix)
+  const separateNamespaces = namespaces.filter(ns => !!POLICIES[ns].patternPrefix)
 
   const rules: BashPatternRule[] = namespaces.map((namespace) => {
     const policy = POLICIES[namespace]
     const actions = policy.readActions.join('|')
+    if (policy.patternPrefix) {
+      return {
+        pattern: `^${policy.patternPrefix}\\s+(${actions})\\b`,
+        comment: `${policy.patternPrefix} read-only operations`,
+      }
+    }
     return {
       pattern: `^craft-agent\\s+${namespace}\\s+(${actions})\\b`,
       comment: `craft-agent ${namespace} read-only operations`,
     }
   })
 
+  // Entity help patterns for main craft-agent namespaces only
+  const mainAlternation = mainNamespaces.join('|')
   rules.push(
     { pattern: '^craft-agent\\s*$', comment: 'craft-agent bare invocation (prints help)' },
-    { pattern: `^craft-agent\\s+(${namespaceAlternation})\\s*$`, comment: 'craft-agent entity help' },
-    { pattern: `^craft-agent\\s+(${namespaceAlternation})\\s+--help\\b`, comment: 'craft-agent entity help flags' },
+    { pattern: `^craft-agent\\s+(${mainAlternation})\\s*$`, comment: 'craft-agent entity help' },
+    { pattern: `^craft-agent\\s+(${mainAlternation})\\s+--help\\b`, comment: 'craft-agent entity help flags' },
     { pattern: '^craft-agent\\s+--(help|version|discover)\\b', comment: 'craft-agent global flags' },
   )
+
+  // Help patterns for separate-binary namespaces
+  for (const namespace of separateNamespaces) {
+    const prefix = POLICIES[namespace].patternPrefix!
+    rules.push(
+      { pattern: `^${prefix}\\s*$`, comment: `${prefix} bare invocation (prints help)` },
+      { pattern: `^${prefix}\\s+--(help|version)\\b`, comment: `${prefix} global flags` },
+    )
+  }
 
   return rules
 }

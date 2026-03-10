@@ -2,6 +2,25 @@
 
 This guide explains how to configure batch processing in Craft Agent to run actions across large lists of items.
 
+> **CLI-first workflow (recommended):** Use `craft-agent-batch` commands instead of editing JSON directly.
+> - `craft-agent-batch --help`
+> - Canonical command reference: [craft-cli.md](./craft-cli.md)
+
+## Recommended CLI Commands
+
+```bash
+craft-agent-batch list
+craft-agent-batch get <id>
+craft-agent-batch validate
+craft-agent-batch status <id>
+craft-agent-batch status <id> --items
+craft-agent-batch create --name "My batch" --source data.csv --id-field id --prompt "Process $BATCH_ITEM_ID"
+craft-agent-batch update <id> --json '{"enabled":false}'
+craft-agent-batch enable <id>
+craft-agent-batch disable <id>
+craft-agent-batch delete <id>
+```
+
 ## What Are Batches?
 
 Batches allow you to process a list of items from a data file (CSV, JSON, or JSONL) by executing a prompt action for each item. You can:
