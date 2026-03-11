@@ -4,7 +4,7 @@
 > Base: `main` (commit `0a778e2`)
 > Purpose: 将 Craft Agent 改造为面向数据分析场景的垂直 Agent — **DataPilot**
 >
-> **Last updated:** 2026-03-11
+> **Last updated:** 2026-03-12
 
 ## 目标
 
@@ -54,6 +54,47 @@
 - `agent/mode-manager.ts` — 路径匹配逻辑
 - `agent/permissions-config.ts` — 权限目录解析
 
+### P-UI — 用户可感知的品牌名替换
+
+将应用中所有用户能直接看到、读到、听到的 "Craft Agent(s)" 文本替换为 "DataPilot"。涉及约 40 个文件、70+ 处改动。
+
+| 改动类别 | 涉及文件 | 说明 |
+|----------|----------|------|
+| 应用名称 & 窗口标题 | `electron-builder.yml`、`main/index.ts`、`renderer/index.html`、`playground.html`、`viewer/index.html` | `productName: DataPilot`、`app.setName('DataPilot')`、`<title>DataPilot</title>` |
+| macOS 菜单栏 | `main/menu.ts`（5 处）、`AppMenu.tsx`、`TopBar.tsx` | About、Hide、Quit 菜单项、Reset 对话框 |
+| 欢迎/登录流程 | `WelcomeStep.tsx`、`ProviderSelectStep.tsx`、`APISetupStep.tsx`（5 处）、`ReauthScreen.tsx`、`CredentialsStep.tsx`（2 处）、`GitBashWarning.tsx` | 所有 onboarding 用户可见文本 |
+| 设置页面 | `PreferencesPage.tsx`（5 处描述和 placeholder） | "Help DataPilot personalize..." |
+| 聊天输入框 | `chat.tsx` playground（4 处） | `'Message DataPilot...'` |
+| 通知 | `useNotifications.ts` | `'DataPilot has a new message for you'` |
+| Provider 标签 | `provider-icons.ts`、`ApiKeyInput.tsx`、`FreeFormInput.tsx`、`AiSettingsPage.tsx`（4 处）、`pi-agent.ts`（2 处）、`diagnostics.ts`、`models-pi.ts` | `'Craft Agents Backend'` → `'DataPilot Backend'` |
+| 错误信息 | `errors.ts`（2 处）、`connection-setup-logic.ts`（3 处）、`pi-agent-server/index.ts` | 用户可见的错误提示文本 |
+| 浏览器空状态 | `BrowserEmptyStateCard.tsx` | 安全提示文本 |
+| OAuth 回调页 | `callback-page.ts`（2 处） | 页面标题和返回链接 |
+| 内置文档源 | `builtin-sources.ts`（2 处） | 源名称和 tagline |
+| MCP 日志 | `session-mcp-server/index.ts`（4 处） | Docs proxy 连接状态日志 |
+| 工具描述 | `tool-defs.ts`（2 处） | `config_validate` 和 `send_developer_feedback` 描述 |
+| CLI 帮助文本 | `cli/src/index.ts` | `'craft-cli — Terminal client for DataPilot server'` |
+| Headless 服务器日志 | `headless-start.ts` | 启动监听日志 |
+| 安装脚本 | `install-app.sh`（macOS + Linux，15+ 处）、`install-app.ps1`（Windows，10+ 处） | 所有终端输出文本、APP_NAME、进程检测 |
+| 构建脚本 | `build/darwin.ts`、`afterPack.cjs`、`build-dmg.sh`、`build-linux.sh`、`build-win.ps1` | `.app` 路径（`DataPilot.app`）、构建输出 |
+| 配置/主题元数据 | `config-defaults.json`、`default.json`、`haze.json`、`tool-icons.json` | `"author": "DataPilot"`、`"displayName": "DataPilot"` |
+| GitHub Issue 模板 | `bug_report.yml`、`feature_request.yml` | 用户提交 issue 时看到的描述 |
+| Viewer 应用 | `viewer/index.html`、`viewer/Header.tsx` | 页面标题和 logo tooltip |
+| 多实例开发 | `electron-dev.ts`（2 处） | `'DataPilot [${instanceNum}]'` |
+
+**合并关注点:** 上游新增的用户可见文本中可能包含 "Craft Agent"，合并后需搜索：
+```bash
+# 搜索所有用户可见的 Craft Agent 文本（排除 node_modules 和代码注释）
+grep -rn "Craft Agent" --include='*.tsx' --include='*.ts' --include='*.html' --include='*.sh' --include='*.ps1' --include='*.yml' --include='*.json' . | grep -v node_modules | grep -v '^\s*//' | grep -v '^\s*\*'
+```
+
+重点关注上游新增的：
+- Onboarding 步骤和 UI 对话框
+- 菜单项和设置页描述文本
+- 错误信息和通知文本
+- 安装/构建脚本输出
+- Provider 标签和连接名称
+
 ---
 
 ## 已知问题
@@ -62,6 +103,35 @@
 |------|------|
 | `createBackend` 测试在新环境失败 | `~/.datapilot/config-defaults.json` 不存在时 `loadConfigDefaults()` 抛异常。需先启动应用创建目录，或在测试中 mock。属于环境依赖，非代码 bug。 |
 | `TRADEMARK.md` 中 bundle ID 被误改 | 文档替换时将 `com.lukilabs.craft-agent` 改为了 `com.lukilabs.datapilot`，但实际 bundle ID 未改动（属于 P3 暂不改动范围）。文档与实际不一致，后续需决定是否真正修改 bundle ID。 |
+
+---
+
+## 未改动项（按类别说明）
+
+### 代码注释 & JSDoc
+
+源码中仍有大量 `// Craft Agent ...` 注释未修改，这些对用户不可见，不影响功能。如需改动，可用全局替换批量处理，但会增加与上游合并的冲突面。
+
+### package.json `description` 字段
+
+各 `package.json` 的 `"description"` 仍为 `"... for Craft Agents"`，属于 npm 元数据，用户不可见。归入 P1 剩余（内部标识层）。
+
+### 构件文件名 `Craft-Agent-xxx`
+
+`electron-builder.yml` 中的 `artifactName`（如 `Craft-Agent-arm64.dmg`、`Craft-Agent-x64.exe`）以及安装脚本中对应的文件名引用**暂未改动**。原因：
+- 文件名与服务端下载 URL（`agents.craft.do/electron/latest/`）耦合
+- 自动更新清单（`latest-mac.yml`）中引用了这些文件名
+- 改动需同步服务端配置，否则下载和自动更新会失败
+
+涉及文件：`electron-builder.yml`（4 处 `artifactName`）、`install-app.sh`（Linux AppImage 文件名）、`install-app.ps1`（Windows exe 文件名）、`scripts/build/` 下 3 个构建脚本。
+
+### Playground 演示数据
+
+`playground/registry/` 下的 `browser-ui.tsx`、`planner.tsx`、`icons.tsx` 中有少量 "Craft Agents" 演示文本（假数据），不影响实际产品体验。
+
+### 测试 Fixture
+
+`storage-startup-migration.test.ts` 中有 6 处 `'Craft Agents Backend (xxx)'` 测试 mock 数据，与实际存储格式匹配旧数据，改动可能导致迁移测试失败。
 
 ---
 
@@ -76,6 +146,7 @@
 | CLI wrapper 脚本 `craft-agent` → `datapilot` | `resources/bin/` 下 4 个脚本 | **中** |
 | `CraftAgent` 类名 | `craft-agent.ts` 中的类和兼容别名 | **中** — 内部 API 变更 |
 | `CRAFT_FEATURE_*` feature flag | `feature-flags.ts` + 引用处 | **中** |
+| 构件文件名 `Craft-Agent-xxx` → `DataPilot-xxx` | `electron-builder.yml` + 安装/构建脚本 | **高** — 需同步服务端下载 URL |
 
 **建议:** 剩余改动作为独立 PR，充分测试后再合并。P1 改动后与上游合并会产生大量冲突，需权衡是否值得。
 
@@ -83,8 +154,9 @@
 
 | 改动项 | 涉及范围 |
 |--------|----------|
-| 文档中的 "Craft Agent(s)" 品牌名文本 | `README.md`, `SECURITY.md`, `TRADEMARK.md` 等 |
-| `.github/ISSUE_TEMPLATE/` | Issue 模板描述 |
+| `README.md` 中的 "Craft Agent(s)" 品牌名 | 标题、描述、示例等 9+ 处 |
+| `SECURITY.md` 安全披露文档 | 品牌名引用 |
+| `CONTRIBUTING.md` 贡献指南 | 品牌名引用 |
 | 根 `package.json` `"name"` 字段 | 元数据 |
 
 ### P3 — 暂不改动（依赖外部服务或影响安全）
@@ -95,6 +167,7 @@
 | `com.lukilabs.craft-agent` bundle ID | 影响签名和数据迁移 |
 | `lukilabs/craft-agents-oss` GitHub 仓库引用 | 实际仓库地址 |
 | `*@craft.do` 邮箱 | 真实联系方式 |
+| `craftagents://` deep link scheme | 影响 URL 跳转和协议注册 |
 
 ---
 
@@ -115,14 +188,20 @@
 | `packages/shared/src/agent/core/path-processor.ts` | 路径检测正则 |
 | `packages/shared/src/agent/mode-manager.ts` | 路径匹配条件 |
 | `packages/shared/src/agent/permissions-config.ts` | 权限目录路径和环境变量 |
+| `apps/electron/electron-builder.yml` | productName、DMG title — 上游可能修改构建配置 |
+| `apps/electron/src/main/menu.ts` | 菜单项文本 |
+| `apps/electron/src/renderer/components/onboarding/` | 欢迎/登录流程文本 |
+| `packages/shared/src/agent/errors.ts` | 错误信息文本 |
+| `packages/server-core/src/domain/connection-setup-logic.ts` | Provider 标签和错误信息 |
+| `scripts/install-app.sh`、`scripts/install-app.ps1` | 安装脚本用户提示 |
 
 ### 合并步骤补充
 
 在 `FORK_MERGE_GUIDE.md` 的合并检查清单基础上，额外执行：
 
-1. **合并后全局搜索 `Craft Agent`**（区分大小写），确认提示词中无遗漏
+1. **合并后全局搜索 `Craft Agent`**（区分大小写），确认用户可见文本中无遗漏
    ```bash
-   grep -rn "Craft Agent" packages/shared/src/prompts/
+   grep -rn "Craft Agent" --include='*.tsx' --include='*.ts' --include='*.html' --include='*.sh' --include='*.ps1' --include='*.yml' --include='*.json' . | grep -v node_modules | grep -v '/\*' | grep -v '^\s*//'
    ```
 2. **合并后全局搜索 `.craft-agent`**，确认数据目录路径无遗漏
    ```bash
@@ -131,6 +210,7 @@
 3. **合并后搜索 `CRAFT_CONFIG_DIR`**，确认环境变量已统一为 `DATAPILOT_CONFIG_DIR`
 4. **检查上游是否新增了身份相关的提示词**，如有，需同步改为 DataPilot
 5. **检查上游是否新增了 `@craft-agent/` 引用或 `CRAFT_*` 环境变量**
+6. **检查上游是否新增了 `Craft Agents.app` 路径引用**（已改为 `DataPilot.app`）
 
 ---
 

@@ -343,7 +343,7 @@ function createAuthenticatedRegistry(): {
     const hasCustomEndpoint = !!initConfig.baseUrl?.trim();
     if (hasCustomEndpoint) {
       throw new Error(
-        'Custom endpoint in Craft Agents Backend mode requires explicit provider selection. ' +
+        'Custom endpoint in DataPilot Backend mode requires explicit provider selection. ' +
         'Use a provider preset in Pi API key mode, or use Anthropic API key mode for arbitrary compatible endpoints.'
       );
     }

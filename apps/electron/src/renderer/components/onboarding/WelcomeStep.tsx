@@ -28,7 +28,7 @@ export function WelcomeStep({
           <CraftAgentsSymbol className="size-10 text-accent" />
         </div>
       }
-      title={isExistingUser ? 'Update Settings' : 'Welcome to Craft Agents'}
+      title={isExistingUser ? 'Update Settings' : 'Welcome to DataPilot'}
       description={
         isExistingUser
           ? 'Update your API connection or change your setup.'

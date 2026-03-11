@@ -1458,7 +1458,7 @@ export async function runValidation(client: CliRpcClient, jsonMode: boolean, noS
 // ---------------------------------------------------------------------------
 
 function printHelp(): void {
-  process.stdout.write(`craft-cli — Terminal client for Craft Agent server
+  process.stdout.write(`craft-cli — Terminal client for DataPilot server
 
 Usage: craft-cli [options] <command> [args...]
 
