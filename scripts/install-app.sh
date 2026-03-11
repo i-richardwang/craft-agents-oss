@@ -3,7 +3,7 @@
 set -e
 
 VERSIONS_URL="https://agents.craft.do/electron"
-DOWNLOAD_DIR="$HOME/.craft-agent/downloads"
+DOWNLOAD_DIR="$HOME/.datapilot/downloads"
 
 # Colors for output
 RED='\033[0;31m'
@@ -315,7 +315,7 @@ else
     appimage_path="$installer_path"
 
     # New paths
-    APP_DIR="$HOME/.craft-agent/app"
+    APP_DIR="$HOME/.datapilot/app"
     WRAPPER_PATH="$INSTALL_DIR/craft-agents"
     APPIMAGE_INSTALL_PATH="$APP_DIR/Craft-Agent-x64.AppImage"
 
@@ -344,9 +344,9 @@ else
 #!/bin/bash
 # Craft Agent launcher - handles Linux-specific AppImage issues
 
-APPIMAGE_PATH="$HOME/.craft-agent/app/Craft-Agent-x64.AppImage"
-ELECTRON_CACHE="$HOME/.config/@craft-agent"
-ELECTRON_CACHE_ALT="$HOME/.cache/@craft-agent"
+APPIMAGE_PATH="$HOME/.datapilot/app/Craft-Agent-x64.AppImage"
+ELECTRON_CACHE="$HOME/.config/@datapilot"
+ELECTRON_CACHE_ALT="$HOME/.cache/@datapilot"
 
 # Verify AppImage exists
 if [ ! -f "$APPIMAGE_PATH" ]; then

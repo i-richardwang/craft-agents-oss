@@ -5,8 +5,8 @@
  * Users can create permissions.json files to extend the default rules.
  *
  * File locations:
- * - Workspace: ~/.craft-agent/workspaces/{slug}/permissions.json
- * - Per-source: ~/.craft-agent/workspaces/{slug}/sources/{sourceSlug}/permissions.json
+ * - Workspace: ~/.datapilot/workspaces/{slug}/permissions.json
+ * - Per-source: ~/.datapilot/workspaces/{slug}/sources/{sourceSlug}/permissions.json
  *
  * Rules are additive - custom configs extend the defaults (more permissive).
  */
@@ -42,11 +42,11 @@ let permissionsInitialized = false;
 
 /**
  * Get the app-level permissions directory.
- * Default permissions are stored at ~/.craft-agent/permissions/
- * Reads env var dynamically so tests can override via CRAFT_CONFIG_DIR.
+ * Default permissions are stored at ~/.datapilot/permissions/
+ * Reads env var dynamically so tests can override via DATAPILOT_CONFIG_DIR.
  */
 export function getAppPermissionsDir(): string {
-  const configDir = process.env.CRAFT_CONFIG_DIR || join(homedir(), '.craft-agent');
+  const configDir = process.env.DATAPILOT_CONFIG_DIR || join(homedir(), '.datapilot');
   return join(configDir, 'permissions');
 }
 
@@ -182,7 +182,7 @@ function migratePermissions(
 }
 
 /**
- * Load default permissions from ~/.craft-agent/permissions/default.json
+ * Load default permissions from ~/.datapilot/permissions/default.json
  * Returns null if file doesn't exist or is invalid.
  */
 export function loadDefaultPermissions(): PermissionsCustomConfig | null {
@@ -576,12 +576,12 @@ class PermissionsConfigCache {
   private sourceConfigs: Map<string, PermissionsCustomConfig | null> = new Map();
   private mergedConfigs: Map<string, MergedPermissionsConfig> = new Map();
 
-  // App-level default permissions (loaded from ~/.craft-agent/permissions/default.json)
+  // App-level default permissions (loaded from ~/.datapilot/permissions/default.json)
   private defaultConfig: PermissionsCustomConfig | null | undefined = undefined; // undefined = not loaded yet
 
   /**
    * Get or load app-level default permissions
-   * These come from ~/.craft-agent/permissions/default.json
+   * These come from ~/.datapilot/permissions/default.json
    */
   private getDefaultConfig(): PermissionsCustomConfig | null {
     if (this.defaultConfig === undefined) {

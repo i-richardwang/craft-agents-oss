@@ -132,7 +132,7 @@ describe('detectLinks', () => {
 
 describe('isFilePathTarget', () => {
   it('accepts absolute unix image paths', () => {
-    expect(isFilePathTarget('/Users/balintorosz/.craft-agent/sessions/abc/image.jpg')).toBe(true)
+    expect(isFilePathTarget('/Users/balintorosz/.datapilot/sessions/abc/image.jpg')).toBe(true)
   })
 
   it('accepts parent-relative image paths', () => {

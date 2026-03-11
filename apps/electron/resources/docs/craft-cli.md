@@ -362,7 +362,7 @@ craft-agent theme reset-override
 - `set-color-theme` and `set-workspace-color-theme` require an existing preset ID (`default` is always valid).
 - `set-override` validates `theme.json` shape before writing.
 - Workspace override is stored in `workspace/config.json` under `defaults.colorTheme`.
-- App override is stored in `~/.craft-agent/theme.json`.
+- App override is stored in `~/.datapilot/theme.json`.
 <!-- cli:theme:end -->
 
 ---
@@ -441,7 +441,7 @@ craft-agent-batch delete abc123
 - `update` accepts flags and/or `--patch`. Flags override `--patch` values. The result is deep-merged into the existing config.
 - `delete` removes the batch from `batches.json` and cleans up its `batch-state-{id}.json` file.
 - `create` infers source type from the file extension (`.csv` → `csv`, `.json` → `json`, `.jsonl` → `jsonl`).
-- Workspace root is auto-detected by walking up from CWD looking for `batches.json` or `.craft-agent/`.
+- Workspace root is auto-detected by walking up from CWD looking for `batches.json` or `.datapilot/`.
 <!-- cli:batch:end -->
 
 ---

@@ -460,7 +460,7 @@ export async function validateStdioMcpConnection(
 
       // Create MCP client
       client = new Client(
-        { name: 'craft-agent-validator', version: '1.0.0' },
+        { name: 'datapilot-validator', version: '1.0.0' },
         { capabilities: {} }
       );
 

@@ -18,7 +18,7 @@ Automations allow you to trigger actions automatically when specific events occu
 Automations are configured in `automations.json` at the root of your workspace:
 
 ```
-~/.craft-agent/workspaces/{workspaceId}/automations.json
+~/.datapilot/workspaces/{workspaceId}/automations.json
 ```
 
 ## Recommended CLI Commands
