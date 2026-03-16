@@ -825,9 +825,10 @@ function AppShellContent({
   // Batches — state, handlers
   const {
     batches,
-    handleStartBatch, handlePauseBatch, handleResumeBatch,
+    handleStartBatch, handlePauseBatch, handleResumeBatch, handleTestBatch,
     getBatchState,
     updateBatchProgress, handleBatchComplete,
+    testProgress, testResults,
     batchPendingDelete, pendingDeleteBatch, setBatchPendingDelete,
     handleDuplicateBatch, handleDeleteBatch, confirmDeleteBatch,
   } = useBatches(activeWorkspaceId)
@@ -1620,10 +1621,13 @@ function AppShellContent({
     onStartBatch: handleStartBatch,
     onPauseBatch: handlePauseBatch,
     onResumeBatch: handleResumeBatch,
+    onTestBatch: handleTestBatch,
     getBatchState,
     onDuplicateBatch: handleDuplicateBatch,
     onDeleteBatch: handleDeleteBatch,
-  }), [contextValue, handleDeleteSession, sources, skills, labelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation, handleStartBatch, handlePauseBatch, handleResumeBatch, getBatchState, handleDuplicateBatch, handleDeleteBatch])
+    testProgress,
+    testResults,
+  }), [contextValue, handleDeleteSession, sources, skills, labelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation, handleStartBatch, handlePauseBatch, handleResumeBatch, handleTestBatch, getBatchState, handleDuplicateBatch, handleDeleteBatch, testProgress, testResults])
 
   // Persist expanded folders to localStorage (workspace-scoped)
   React.useEffect(() => {
@@ -3232,10 +3236,12 @@ function AppShellContent({
                 onStartBatch={handleStartBatch}
                 onPauseBatch={handlePauseBatch}
                 onResumeBatch={handleResumeBatch}
+                onTestBatch={handleTestBatch}
                 onDuplicateBatch={handleDuplicateBatch}
                 onDeleteBatch={handleDeleteBatch}
                 selectedBatchId={isBatchesNavigation(navState) && navState.details ? navState.details.batchId : null}
                 workspaceRootPath={activeWorkspace?.rootPath}
+                testProgress={testProgress}
               />
             )}
             {isSettingsNavigation(navState) && (

@@ -813,7 +813,10 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
     const authProvider = initConfig.piAuth.provider;
     const bareModel = model.startsWith('pi/') ? model.slice(3) : model;
     const resolved = resolvePiModel(modelRegistry, bareModel, authProvider, shouldPreferCustomEndpoint());
-    if (!resolved || (resolved as any).provider !== authProvider || isDeniedMiniModelId(model)) {
+    // Custom-endpoint models carry their own API key via registerProvider()
+    // and don't need to match the piAuth provider name.
+    const isCustomEndpointModel = !!(resolved && (resolved as any).provider === 'custom-endpoint');
+    if (!resolved || (!isCustomEndpointModel && (resolved as any).provider !== authProvider) || isDeniedMiniModelId(model)) {
       const fallback = getDefaultSummarizationModel();
       debugLog(`[queryLlm] Model ${bareModel} incompatible with ${authProvider}, falling back to ${fallback}`);
       model = fallback;
@@ -952,7 +955,9 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
         try {
           const resolved = resolvePiModel(modelRegistry, candidate, initConfig.piAuth?.provider, shouldPreferCustomEndpoint());
           if (!resolved) return false;
-          if (initConfig.piAuth && (resolved as any).provider !== initConfig.piAuth.provider) {
+          if (initConfig.piAuth
+            && (resolved as any).provider !== initConfig.piAuth.provider
+            && (resolved as any).provider !== 'custom-endpoint') {
             return false;
           }
           return true;

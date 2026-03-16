@@ -187,3 +187,23 @@ export interface BatchItem {
   /** All fields from the data source (values coerced to strings) */
   fields: Record<string, string>
 }
+
+// ============================================================================
+// Test Batch Types
+// ============================================================================
+
+export interface TestBatchResult {
+  batchId: string
+  testKey: string
+  sampleSize: number
+  status: 'completed' | 'failed'
+  durationMs: number
+  items: Array<{
+    itemId: string
+    status: BatchItemStatus
+    sessionId?: string
+    durationMs?: number
+    error?: string
+  }>
+  outputPath?: string
+}

@@ -81,6 +81,77 @@ async function fetchCopilotModels(
 }
 
 /**
+ * Lightweight direct HTTP test for providers that expose an OpenAI-compatible
+ * chat completions endpoint.
+ *
+ * The OpenAI Node SDK convention: `new OpenAI({ baseURL })` appends `/chat/completions`
+ * to the baseURL. So we try `${baseUrl}/chat/completions` first (matching SDK behavior),
+ * then fall back to `${baseUrl}/v1/chat/completions` for servers that expect the full path.
+ */
+async function testOpenAICompatible(
+  apiKey: string,
+  baseUrl: string,
+  model: string,
+  timeoutMs: number,
+): Promise<{ success: boolean; error?: string }> {
+  const normalised = baseUrl.replace(/\/$/, '');
+  const candidates = [
+    `${normalised}/chat/completions`,
+    `${normalised}/v1/chat/completions`,
+  ];
+
+  const headers = {
+    'content-type': 'application/json',
+    'authorization': `Bearer ${apiKey}`,
+  };
+  const body = JSON.stringify({
+    model,
+    max_tokens: 16,
+    messages: [{ role: 'user', content: 'Say ok' }],
+  });
+
+  let lastError: string | undefined;
+
+  for (const url of candidates) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers,
+        body,
+      });
+
+      if (res.ok) return { success: true };
+
+      const text = await res.text().catch(() => '');
+      const code = res.status;
+
+      // 404/405 may mean wrong path variant — try next candidate
+      if (code === 404 || code === 405) {
+        lastError = `${code} ${text}`.slice(0, 500);
+        continue;
+      }
+
+      // Any other error (401, 403, 500, …) is definitive
+      return { success: false, error: `${code} ${text}`.slice(0, 500) };
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        return { success: false, error: 'Connection test timed out' };
+      }
+      return { success: false, error: (err as Error).message };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // All candidates exhausted
+  return { success: false, error: lastError ?? 'All endpoint paths returned errors' };
+}
+
+/**
  * Lightweight direct HTTP test for Pi providers that expose an Anthropic-compatible
  * messages endpoint. Avoids spawning a full Pi subprocess (which can exceed the
  * 20s test timeout due to SDK initialization overhead).
@@ -206,5 +277,34 @@ export const piDriver: ProviderDriver = {
     }
     return testAnthropicCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
   },
-  validateStoredConnection: async () => ({ success: true }),
+  validateStoredConnection: async ({ slug, connection, credentialManager }) => {
+    const VALIDATE_TIMEOUT_MS = 15_000;
+
+    // Custom endpoint connections: validate by making an actual API call
+    if (connection.customEndpoint && connection.baseUrl?.trim()) {
+      const apiKey = await credentialManager.getLlmApiKey(slug);
+      if (!apiKey) {
+        return { success: false, error: 'Could not retrieve API key' };
+      }
+
+      const modelIds = (connection.models ?? []).map(m => typeof m === 'string' ? m : m.id).filter(Boolean);
+      const testModel = connection.defaultModel || modelIds[0];
+      if (!testModel) {
+        return { success: false, error: 'No model configured for validation' };
+      }
+
+      const baseUrl = connection.baseUrl.trim();
+      if (connection.customEndpoint.api === 'anthropic-messages') {
+        return testAnthropicCompatible(apiKey, baseUrl, testModel, VALIDATE_TIMEOUT_MS);
+      }
+      return testOpenAICompatible(apiKey, baseUrl, testModel, VALIDATE_TIMEOUT_MS);
+    }
+
+    // Standard Pi connections (Copilot, built-in providers): credential check only
+    const hasKey = await credentialManager.hasLlmCredentials(slug, connection.authType, connection.providerType);
+    if (!hasKey && connection.authType !== 'none' && connection.authType !== 'oauth') {
+      return { success: false, error: 'No credentials configured' };
+    }
+    return { success: true };
+  },
 };

@@ -164,12 +164,18 @@ export interface AppShellContextType {
   onPauseBatch?: (batchId: string) => void
   /** Resume a batch by ID */
   onResumeBatch?: (batchId: string) => void
+  /** Test a batch by running a random sample */
+  onTestBatch?: (batchId: string) => void
   /** Get full batch state (including items) by ID */
   getBatchState?: (batchId: string) => Promise<import('@craft-agent/shared/batches').BatchState | null>
   /** Duplicate a batch by ID — clones config with " Copy" suffix */
   onDuplicateBatch?: (batchId: string) => void
   /** Delete a batch by ID — removes from batches config and state file */
   onDeleteBatch?: (batchId: string) => void
+  /** Real-time test progress keyed by parent batchId */
+  testProgress?: Record<string, import('@craft-agent/shared/batches').BatchProgress>
+  /** Completed test results keyed by parent batchId */
+  testResults?: Record<string, import('@craft-agent/shared/batches').TestBatchResult>
 }
 
 const AppShellContext = createContext<AppShellContextType | null>(null)

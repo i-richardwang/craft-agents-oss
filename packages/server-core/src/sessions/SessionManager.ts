@@ -3361,6 +3361,14 @@ export class SessionManager implements ISessionManager {
         }
       }
 
+      // Wire up onBatchTest to delegate to BatchProcessor.test()
+      managed.agent.onBatchTest = async (batchId, sampleSize) => {
+        sessionLog.info(`Batch test request from session ${managed.id}: batch="${batchId}" sampleSize=${sampleSize ?? 'default'}`)
+        const processor = this.getBatchProcessor(managed.workspace.rootPath)
+        if (!processor) throw new Error('Batch processor not initialized for this workspace')
+        return processor.test(batchId, sampleSize)
+      }
+
       // Wire up onSourceActivationRequest to auto-enable sources when agent tries to use them
       managed.agent.onSourceActivationRequest = async (sourceSlug: string): Promise<boolean> => {
         sessionLog.info(`Source activation request for session ${managed.id}:`, sourceSlug)

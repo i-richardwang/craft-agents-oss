@@ -103,6 +103,7 @@ import { saveBinaryResponse } from '../utils/binary-detection.ts';
 
 /** Backend-executed session tools currently supported by PiAgent. */
 export const PI_BACKEND_SESSION_TOOL_NAMES = new Set<string>([
+  'batch_test',
   'call_llm',
   'spawn_session',
   'browser_tool',
@@ -1024,6 +1025,7 @@ export class PiAgent extends BaseAgent {
         return;
       }
 
+      case 'batch_test_intercept':
       case 'call_llm_intercept':
       case 'spawn_session_intercept':
         // These tools are proxy tools handled via tool_execute_request — just allow
@@ -1219,6 +1221,20 @@ export class PiAgent extends BaseAgent {
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
           return { content: `spawn_session failed: ${msg}`, isError: true };
+        }
+      }
+
+      // batch_test — delegates to BatchProcessor.test() via callback
+      if (toolName === 'batch_test') {
+        try {
+          if (!this.onBatchTest) {
+            return { content: 'batch_test is not available in this context.', isError: true };
+          }
+          const result = await this.onBatchTest(args.batchId as string, args.sampleSize as number | undefined);
+          return { content: JSON.stringify(result, null, 2), isError: false };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          return { content: `batch_test failed: ${msg}`, isError: true };
         }
       }
 

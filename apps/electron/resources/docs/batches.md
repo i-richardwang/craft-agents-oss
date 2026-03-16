@@ -12,8 +12,8 @@ craft-agent-batch get <id>
 craft-agent-batch validate
 craft-agent-batch status <id>
 craft-agent-batch status <id> --items
-craft-agent-batch create --name "My batch" --source data.csv --id-field id --prompt "Process $BATCH_ITEM_ID"
-craft-agent-batch create --name "Extraction" --source data.csv --id-field id --prompt "Extract $BATCH_ITEM_ID" --output-path output/results.jsonl --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
+craft-agent-batch create --name "My batch" --source data.csv --id-field id --prompt-file prompt.txt
+craft-agent-batch create --name "Extraction" --source data.csv --id-field id --prompt-file prompt.txt --output-path output/results.jsonl --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
 craft-agent-batch update <id> --name "Renamed" --concurrency 5
 craft-agent-batch update <id> --enabled false
 craft-agent-batch update <id> --patch '{"execution":{"retryOnFailure":true}}'
@@ -68,12 +68,17 @@ One JSON object per line.
 
 ## Prompt Templates
 
-Use `$BATCH_ITEM_{FIELDNAME}` placeholders in `--prompt` to inject item fields. Field names are uppercased.
+Write your prompt template to a file and pass it via `--prompt-file`. Use `$BATCH_ITEM_{FIELDNAME}` placeholders to inject item fields. Field names are uppercased.
 
-For a CSV with columns `user_id`, `name`, `email`:
+**Field naming requirement:** All field names in the data source must use ASCII characters only (letters, numbers, underscores). For example: `user_id`, `name`, `email`. If your source data has non-ASCII field names (e.g. Chinese), rename them to English before use.
 
 ```
---prompt "Create a welcome email for $BATCH_ITEM_NAME at $BATCH_ITEM_EMAIL (account $BATCH_ITEM_USER_ID)"
+# prompt.txt
+Create a welcome email for $BATCH_ITEM_NAME at $BATCH_ITEM_EMAIL (account $BATCH_ITEM_USER_ID)
+```
+
+```bash
+craft-agent-batch create --name "Onboarding" --source users.csv --id-field user_id --prompt-file prompt.txt
 ```
 
 Additional action fields (set via `--patch`):
@@ -137,7 +142,7 @@ Example:
 
 ```bash
 craft-agent-batch create --name "User Analysis" --source data/users.csv --id-field user_id \
-  --prompt "Analyse user $BATCH_ITEM_USER_ID" \
+  --prompt-file prompt.txt \
   --output-path output/user-analysis.jsonl \
   --output-schema '{"type":"object","properties":{"summary":{"type":"string","description":"One-sentence summary"},"risk_level":{"type":"string","enum":["low","medium","high"]},"score":{"type":"number","description":"Risk score 0-100"}},"required":["summary","risk_level"]}'
 ```
@@ -148,12 +153,18 @@ Without `--output-schema`, the agent can output any JSON object (freeform mode).
 
 ### CSV User Processing with Structured Output
 
+```
+# prompt.txt
+Generate an onboarding summary for user $BATCH_ITEM_NAME ($BATCH_ITEM_EMAIL).
+Their role is $BATCH_ITEM_ROLE and they joined on $BATCH_ITEM_START_DATE.
+```
+
 ```bash
 craft-agent-batch create \
   --name "User Onboarding Summaries" \
   --source data/new-users.csv \
   --id-field user_id \
-  --prompt "Generate an onboarding summary for user $BATCH_ITEM_NAME ($BATCH_ITEM_EMAIL). Their role is $BATCH_ITEM_ROLE and they joined on $BATCH_ITEM_START_DATE." \
+  --prompt-file prompt.txt \
   --concurrency 5 \
   --permission-mode safe \
   --label "Batch" --label "onboarding" \
@@ -164,12 +175,18 @@ craft-agent-batch create \
 
 ### JSON Report Generation
 
+```
+# prompt.txt
+Generate a quarterly status report for project $BATCH_ITEM_PROJECT_ID ($BATCH_ITEM_TITLE)
+in the $BATCH_ITEM_REGION region. Include budget analysis and key milestones.
+```
+
 ```bash
 craft-agent-batch create \
   --name "Quarterly Report Generation" \
   --source data/projects.json \
   --id-field project_id \
-  --prompt "Generate a quarterly status report for project $BATCH_ITEM_PROJECT_ID ($BATCH_ITEM_TITLE) in the $BATCH_ITEM_REGION region. Include budget analysis and key milestones." \
+  --prompt-file prompt.txt \
   --concurrency 3 \
   --permission-mode allow-all \
   --label "Batch" --label "reports" \
@@ -178,16 +195,91 @@ craft-agent-batch create \
 
 ### JSONL Content Translation
 
+```
+# prompt.txt
+Translate the following text to $BATCH_ITEM_TARGET_LANG. Preserve formatting and tone.
+
+Text: $BATCH_ITEM_TEXT
+```
+
 ```bash
 craft-agent-batch create \
   --name "Content Translation" \
   --source data/content-to-translate.jsonl \
   --id-field content_id \
   --concurrency 10 \
-  --prompt "Translate the following text to $BATCH_ITEM_TARGET_LANG. Preserve formatting and tone.\n\nText: $BATCH_ITEM_TEXT" \
+  --prompt-file prompt.txt \
   --label "Batch" --label "translation" \
   --patch '{"execution":{"retryOnFailure":true,"maxRetries":3}}'
 ```
+
+## Testing Batches
+
+Before running a full batch, always test with a random sample to validate your prompt, output schema, and result quality.
+
+### How to Test
+
+Use the `batch_test` tool to run a random sample:
+
+- `batchId` (required): The batch ID to test
+- `sampleSize` (optional): Number of random items (default: 3)
+
+The test runs real sessions with the same configuration as production, but:
+- Only processes a random sample of items
+- Writes output to a separate file: `{output-path}.test.jsonl` (e.g., `results.test.jsonl`)
+- State tracked separately in `batch-state-{id}__test.json`
+- Does not affect production batch state or output
+
+### Test Result
+
+`batch_test` blocks until all sampled items complete and returns a JSON result:
+
+- `status` — `"completed"` or `"failed"`
+- `sampleSize` — Number of items tested
+- `durationMs` — Total test duration
+- `items` — Array of per-item results, each with `itemId`, `status`, `error` (if failed), and `sessionId`
+- `outputPath` — Path to the test output file (use this to read structured results)
+
+### Iterative Workflow
+
+1. Create the batch configuration using CLI
+2. Call `batch_test` to run a sample
+3. **Review** the results (see Review Checklist below)
+4. If issues found, update the prompt or schema using CLI (`craft-agent-batch update`)
+5. Repeat steps 2-4 until satisfied
+6. Tell the user the batch is ready — the user starts the full batch from the UI
+
+### Review Checklist
+
+After each test run, read the test output file (path from `outputPath` in the test result) and review across three dimensions:
+
+#### 1. Execution — Did each item run correctly?
+
+- Did all items complete, or did some fail? Read errors to understand why.
+- Did the agent follow the prompt instructions? Look for signs of misinterpretation or ignored requirements.
+- If there are failures or misinterpretations, the **prompt wording** likely needs to be clearer or more specific.
+
+#### 2. Task Design — Is the task well-defined?
+
+- **Schema completeness**: Are there fields that should be added or removed? Are required fields truly required?
+- **Enum/category quality**: For classification tasks, do the categories cover all cases without overlap (MECE)? Would the agent struggle to pick between categories for an ambiguous item?
+- **Granularity**: Is the output too coarse (losing useful detail) or too fine (creating noise)?
+- **Assumptions**: Does the prompt assume something that may not hold for all items in the full dataset?
+
+If the structure or definitions need adjusting, update the schema or prompt via CLI.
+
+#### 3. Output Quality — Is the content good enough?
+
+- **Accuracy**: Are the results factually correct and well-grounded in the input data?
+- **Consistency**: Do similar items produce similar quality results, or is there high variance?
+- **Specificity**: Are results substantive and specific to each item, or generic and templated?
+- **Edge cases**: Do items with unusual data (empty fields, long text, special characters) produce reasonable results?
+
+If content quality is poor despite clear instructions and good schema, consider adding examples, constraints, or evaluation criteria to the prompt.
+
+### Test Output
+
+Test output uses the same JSONL format as production output. Read the `.test.jsonl` file (path from `outputPath`) to inspect structured results for each sampled item.
 
 ## Lifecycle
 

@@ -15,16 +15,20 @@ import { useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import { batchesAtom } from '@/atoms/batches'
 import type { BatchListItem } from '@/components/batches/types'
-import type { BatchProgress, BatchState } from '@craft-agent/shared/batches'
+import { TEST_BATCH_SUFFIX } from '@craft-agent/shared/batches/constants'
+import type { BatchProgress, BatchState, TestBatchResult } from '@craft-agent/shared/batches'
 
 export interface UseBatchesResult {
   batches: BatchListItem[]
   handleStartBatch: (batchId: string) => void
   handlePauseBatch: (batchId: string) => void
   handleResumeBatch: (batchId: string) => void
+  handleTestBatch: (batchId: string) => void
   getBatchState: (batchId: string) => Promise<BatchState | null>
   updateBatchProgress: (progress: BatchProgress) => void
   handleBatchComplete: (batchId: string) => void
+  testProgress: Record<string, BatchProgress>
+  testResults: Record<string, TestBatchResult>
   batchPendingDelete: string | null
   pendingDeleteBatch: BatchListItem | undefined
   setBatchPendingDelete: (id: string | null) => void
@@ -38,6 +42,8 @@ export function useBatches(
 ): UseBatchesResult {
   const [batches, setBatches] = useState<BatchListItem[]>([])
   const [batchPendingDelete, setBatchPendingDelete] = useState<string | null>(null)
+  const [testProgress, setTestProgress] = useState<Record<string, BatchProgress>>({})
+  const [testResults, setTestResults] = useState<Record<string, TestBatchResult>>({})
 
   // Sync batches to Jotai atom for cross-component access (MainContentPanel)
   const setBatchesAtom = useSetAtom(batchesAtom)
@@ -68,8 +74,13 @@ export function useBatches(
     return () => { cleanup() }
   }, [activeWorkspaceId, loadBatches])
 
-  // Update a single batch's progress in the list
+  // Update a single batch's progress in the list (or route test progress separately)
   const updateBatchProgress = useCallback((progress: BatchProgress) => {
+    if (progress.batchId.endsWith(TEST_BATCH_SUFFIX)) {
+      const parentId = progress.batchId.slice(0, -TEST_BATCH_SUFFIX.length)
+      setTestProgress(prev => ({ ...prev, [parentId]: progress }))
+      return
+    }
     setBatches(prev => prev.map(b =>
       b.id === progress.batchId ? { ...b, progress } : b
     ))
@@ -105,6 +116,31 @@ export function useBatches(
     window.electronAPI.resumeBatch(activeWorkspaceId, batchId)
       .then(() => { toast.success('Batch resumed') })
       .catch((err: Error) => { toast.error(`Failed to resume batch: ${err.message}`) })
+  }, [activeWorkspaceId])
+
+  // Test a batch with a random sample
+  const handleTestBatch = useCallback((batchId: string) => {
+    if (!activeWorkspaceId) return
+    // Clear previous result and set initial test progress immediately
+    setTestResults(prev => { const next = { ...prev }; delete next[batchId]; return next })
+    setTestProgress(prev => ({ ...prev, [batchId]: {
+      batchId: `${batchId}${TEST_BATCH_SUFFIX}`,
+      status: 'running',
+      totalItems: 0,
+      completedItems: 0,
+      failedItems: 0,
+      runningItems: 0,
+      pendingItems: 0,
+    } }))
+    window.electronAPI.testBatch(activeWorkspaceId, batchId)
+      .then((result) => {
+        setTestResults(prev => ({ ...prev, [batchId]: result }))
+        setTestProgress(prev => { const next = { ...prev }; delete next[batchId]; return next })
+      })
+      .catch((err: Error) => {
+        setTestProgress(prev => { const next = { ...prev }; delete next[batchId]; return next })
+        toast.error(`Failed to test batch: ${err.message}`)
+      })
   }, [activeWorkspaceId])
 
   // Get full batch state (with items)
@@ -143,9 +179,12 @@ export function useBatches(
     handleStartBatch,
     handlePauseBatch,
     handleResumeBatch,
+    handleTestBatch,
     getBatchState,
     updateBatchProgress,
     handleBatchComplete,
+    testProgress,
+    testResults,
     batchPendingDelete,
     pendingDeleteBatch,
     setBatchPendingDelete,
