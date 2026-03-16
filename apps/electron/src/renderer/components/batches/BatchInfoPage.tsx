@@ -21,8 +21,9 @@ import { BatchMenu } from './BatchMenu'
 import { BatchActionRow } from './BatchActionRow'
 import { BatchItemTimeline } from './BatchItemTimeline'
 import { BATCH_STATUS_DISPLAY, BATCH_STATUS_BADGE_COLOR, getPermissionDisplayName } from './types'
+import { TEST_BATCH_SUFFIX } from '@craft-agent/shared/batches/constants'
 import type { BatchListItem } from './types'
-import type { BatchState, BatchStatus } from '@craft-agent/shared/batches'
+import type { BatchState, BatchStatus, BatchProgress, TestBatchResult } from '@craft-agent/shared/batches'
 
 // ============================================================================
 // Component
@@ -33,9 +34,12 @@ export interface BatchInfoPageProps {
   onStart?: () => void
   onPause?: () => void
   onResume?: () => void
+  onTest?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
   getBatchState?: (batchId: string) => Promise<BatchState | null>
+  testProgress?: BatchProgress
+  testResult?: TestBatchResult
   className?: string
 }
 
@@ -44,9 +48,12 @@ export function BatchInfoPage({
   onStart,
   onPause,
   onResume,
+  onTest,
   onDuplicate,
   onDelete,
   getBatchState,
+  testProgress,
+  testResult,
   className,
 }: BatchInfoPageProps) {
   const workspace = useActiveWorkspace()
@@ -73,6 +80,35 @@ export function BatchInfoPage({
 
   const itemCount = batchState ? Object.keys(batchState.items).length : 0
 
+  // Load test state (with items) when a test is running or has completed
+  const [testState, setTestState] = useState<BatchState | null>(null)
+  const isTestRunning = !!testProgress
+  const hasTestResult = !!testResult
+
+  useEffect(() => {
+    if (!getBatchState || !batch.id) return
+    if (!isTestRunning && !hasTestResult) { setTestState(null); return }
+    let stale = false
+    getBatchState(`${batch.id}${TEST_BATCH_SUFFIX}`).then(state => {
+      if (!stale) setTestState(state)
+    })
+    return () => { stale = true }
+  }, [getBatchState, batch.id, isTestRunning, hasTestResult, testProgress, testResult])
+
+  // Derive test display data from progress (running) or result (completed)
+  const testDisplayProgress = testProgress ?? (testResult ? {
+    batchId: testResult.batchId,
+    status: testResult.status === 'completed' ? 'completed' as const : 'failed' as const,
+    totalItems: testResult.sampleSize,
+    completedItems: testResult.items.filter(i => i.status === 'completed').length,
+    failedItems: testResult.items.filter(i => i.status === 'failed').length,
+    runningItems: 0,
+    pendingItems: 0,
+  } : null)
+
+  const testStatus: BatchStatus | undefined = testDisplayProgress?.status
+  const testItemCount = testState ? Object.keys(testState.items).length : 0
+
   return (
     <Info_Page className={className}>
       <Info_Page.Header
@@ -84,6 +120,7 @@ export function BatchInfoPage({
             onStart={onStart}
             onPause={onPause}
             onResume={onResume}
+            onTest={onTest}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
           />
@@ -194,6 +231,45 @@ export function BatchInfoPage({
                 </Info_Table.Row>
               )}
             </Info_Table>
+          </Info_Section>
+        )}
+
+        {/* Section: Test Run (only when test data exists) */}
+        {testDisplayProgress && testStatus && (
+          <Info_Section
+            title="Test Run"
+            description={`${testDisplayProgress.completedItems + testDisplayProgress.failedItems} of ${testDisplayProgress.totalItems} items processed`}
+          >
+            <Info_Table>
+              <Info_Table.Row label="Status">
+                <Info_Badge color={BATCH_STATUS_BADGE_COLOR[testStatus]}>
+                  {BATCH_STATUS_DISPLAY[testStatus]}
+                </Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Total" value={`${testDisplayProgress.totalItems} items`} />
+              <Info_Table.Row label="Completed">
+                <Info_Badge color="success">{testDisplayProgress.completedItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Failed">
+                <Info_Badge color="destructive">{testDisplayProgress.failedItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Running">
+                <Info_Badge color="warning">{testDisplayProgress.runningItems}</Info_Badge>
+              </Info_Table.Row>
+              <Info_Table.Row label="Pending">
+                <Info_Badge color="muted">{testDisplayProgress.pendingItems}</Info_Badge>
+              </Info_Table.Row>
+            </Info_Table>
+          </Info_Section>
+        )}
+
+        {/* Section: Test Items (only when test data exists) */}
+        {(isTestRunning || hasTestResult) && (
+          <Info_Section
+            title="Test Items"
+            description={testItemCount > 0 ? `${testItemCount} items sampled` : undefined}
+          >
+            <BatchItemTimeline items={testState?.items ?? {}} />
           </Info_Section>
         )}
 

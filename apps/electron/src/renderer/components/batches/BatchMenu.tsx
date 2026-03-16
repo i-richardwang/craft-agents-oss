@@ -6,7 +6,7 @@
  * Uses MenuComponents context for dropdown/context menu rendering.
  */
 
-import { Play, Pause, RotateCcw, Copy, Trash2 } from 'lucide-react'
+import { Play, Pause, RotateCcw, Copy, Trash2, FlaskConical } from 'lucide-react'
 import { useMenuComponents } from '@/components/ui/menu-context'
 import type { BatchStatus } from '@craft-agent/shared/batches'
 
@@ -16,6 +16,7 @@ export interface BatchMenuProps {
   onStart?: () => void
   onPause?: () => void
   onResume?: () => void
+  onTest?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
 }
@@ -26,6 +27,7 @@ export function BatchMenu({
   onStart,
   onPause,
   onResume,
+  onTest,
   onDuplicate,
   onDelete,
 }: BatchMenuProps) {
@@ -54,6 +56,14 @@ export function BatchMenu({
         <MenuItem onClick={onResume}>
           <RotateCcw className="h-3.5 w-3.5" />
           <span className="flex-1">Resume</span>
+        </MenuItem>
+      )}
+
+      {/* Test - available in all states except running */}
+      {status !== 'running' && onTest && (
+        <MenuItem onClick={onTest}>
+          <FlaskConical className="h-3.5 w-3.5" />
+          <span className="flex-1">Test</span>
         </MenuItem>
       )}
 

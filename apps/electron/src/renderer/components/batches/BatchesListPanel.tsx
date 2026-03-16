@@ -19,7 +19,7 @@ import { BatchMenu } from './BatchMenu'
 import { cn } from '@/lib/utils'
 import { BATCH_STATUS_DISPLAY, BATCH_STATUS_COLOR, type BatchFilterKind } from './types'
 import type { BatchListItem } from './types'
-import type { BatchStatus } from '@craft-agent/shared/batches'
+import type { BatchProgress, BatchStatus } from '@craft-agent/shared/batches'
 
 /** Tiny inline badge for batch status */
 function MicroBadge({ children, colorClass }: { children: React.ReactNode; colorClass: string }) {
@@ -38,10 +38,12 @@ interface BatchItemProps {
   batch: BatchListItem
   isSelected: boolean
   isFirst: boolean
+  isTesting?: boolean
   onClick: () => void
   onStart?: () => void
   onPause?: () => void
   onResume?: () => void
+  onTest?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
 }
@@ -50,10 +52,12 @@ function BatchItem({
   batch,
   isSelected,
   isFirst,
+  isTesting,
   onClick,
   onStart,
   onPause,
   onResume,
+  onTest,
   onDuplicate,
   onDelete,
 }: BatchItemProps) {
@@ -73,9 +77,16 @@ function BatchItem({
       icon={<BatchAvatar status={status} size="sm" />}
       title={batch.name}
       badges={
-        <MicroBadge colorClass={`${statusColors.bg} ${statusColors.text}`}>
-          {BATCH_STATUS_DISPLAY[status]}
-        </MicroBadge>
+        <>
+          <MicroBadge colorClass={`${statusColors.bg} ${statusColors.text}`}>
+            {BATCH_STATUS_DISPLAY[status]}
+          </MicroBadge>
+          {isTesting && (
+            <MicroBadge colorClass="bg-info/10 text-info">
+              Testing
+            </MicroBadge>
+          )}
+        </>
       }
       trailing={
         progressText ? (
@@ -91,6 +102,7 @@ function BatchItem({
           onStart={onStart}
           onPause={onPause}
           onResume={onResume}
+          onTest={onTest}
           onDuplicate={onDuplicate}
           onDelete={onDelete}
         />
@@ -110,10 +122,12 @@ export interface BatchesListPanelProps {
   onStartBatch?: (batchId: string) => void
   onPauseBatch?: (batchId: string) => void
   onResumeBatch?: (batchId: string) => void
+  onTestBatch?: (batchId: string) => void
   onDuplicateBatch?: (batchId: string) => void
   onDeleteBatch?: (batchId: string) => void
   selectedBatchId?: string | null
   workspaceRootPath?: string
+  testProgress?: Record<string, BatchProgress>
   className?: string
 }
 
@@ -124,10 +138,12 @@ export function BatchesListPanel({
   onStartBatch,
   onPauseBatch,
   onResumeBatch,
+  onTestBatch,
   onDuplicateBatch,
   onDeleteBatch,
   selectedBatchId,
   workspaceRootPath,
+  testProgress,
   className,
 }: BatchesListPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -221,10 +237,12 @@ export function BatchesListPanel({
                   batch={batch}
                   isSelected={selectedBatchId === batch.id}
                   isFirst={index === 0}
+                  isTesting={!!(batch.id && testProgress?.[batch.id])}
                   onClick={() => onBatchClick(batch.id ?? '')}
                   onStart={onStartBatch ? () => onStartBatch(batch.id ?? '') : undefined}
                   onPause={onPauseBatch ? () => onPauseBatch(batch.id ?? '') : undefined}
                   onResume={onResumeBatch ? () => onResumeBatch(batch.id ?? '') : undefined}
+                  onTest={onTestBatch ? () => onTestBatch(batch.id ?? '') : undefined}
                   onDuplicate={onDuplicateBatch ? () => onDuplicateBatch(batch.id ?? '') : undefined}
                   onDelete={onDeleteBatch ? () => onDeleteBatch(batch.id ?? '') : undefined}
                 />

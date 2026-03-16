@@ -8,9 +8,9 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, createHash } from 'node:crypto'
 import { createLogger } from '../utils/debug.ts'
-import { BATCHES_CONFIG_FILE, DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_RETRIES, BATCH_ITEM_ENV_PREFIX } from './constants.ts'
+import { BATCHES_CONFIG_FILE, DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_RETRIES, BATCH_ITEM_ENV_PREFIX, DEFAULT_TEST_SAMPLE_SIZE, TEST_BATCH_SUFFIX } from './constants.ts'
 import { BatchesFileConfigSchema } from './schemas.ts'
 import { loadBatchItems } from './data-source.ts'
 import {
@@ -31,6 +31,7 @@ import type {
   BatchProgress,
   BatchSystemOptions,
   BatchExecutePromptParams,
+  TestBatchResult,
 } from './types.ts'
 
 const log = createLogger('batch-processor')
@@ -46,6 +47,12 @@ export class BatchProcessor {
 
   /** Reverse lookup: sessionId → { batchId, itemId } */
   private sessionToItem: Map<string, { batchId: string; itemId: string }> = new Map()
+
+  /** Virtual config overrides for test batches (keyed by test key) */
+  private configOverrides: Map<string, BatchConfig> = new Map()
+
+  /** Promise resolve callbacks for test batch completion */
+  private testResolvers: Map<string, (result: TestBatchResult) => void> = new Map()
 
   constructor(options: BatchSystemOptions) {
     this.options = options
@@ -118,8 +125,8 @@ export class BatchProcessor {
    * Get a specific batch configuration by ID.
    */
   getBatchConfig(batchId: string): BatchConfig | undefined {
-    const config = this.loadConfig()
-    return config?.batches.find((b) => b.id === batchId)
+    return this.configOverrides.get(batchId) ??
+      this.loadConfig()?.batches.find((b) => b.id === batchId)
   }
 
   /**
@@ -540,8 +547,106 @@ export class BatchProcessor {
 
     log.info(`[BatchProcessor] Batch "${batchId}" ${state.status}: ${progress.completedItems} completed, ${progress.failedItems} failed`)
 
+    // If this is a test batch, resolve the test promise and clean up
+    const testResolver = this.testResolvers.get(batchId)
+    if (testResolver) {
+      const config = this.getBatchConfig(batchId)
+      const items = Object.entries(state.items).map(([itemId, itemState]) => ({
+        itemId,
+        status: itemState.status,
+        sessionId: itemState.sessionId,
+        durationMs: itemState.startedAt && itemState.completedAt
+          ? itemState.completedAt - itemState.startedAt
+          : undefined,
+        error: itemState.error,
+      }))
+
+      testResolver({
+        batchId: batchId.replace(TEST_BATCH_SUFFIX, ''),
+        testKey: batchId,
+        sampleSize: state.totalItems,
+        status: state.status === 'completed' ? 'completed' : 'failed',
+        durationMs: state.startedAt ? Date.now() - state.startedAt : 0,
+        items,
+        outputPath: config?.output?.path,
+      })
+
+      this.testResolvers.delete(batchId)
+      this.stop(batchId)
+      return
+    }
+
     this.options.onBatchComplete?.(batchId, state.status)
     this.options.onProgress?.(computeProgress(state))
+  }
+
+  // ============================================================================
+  // Test Batch
+  // ============================================================================
+
+  /**
+   * Test a batch by running a random sample of items. Returns a promise that
+   * resolves when all sampled items have completed. Uses the same dispatch
+   * pipeline as start() but with an isolated virtual key and output path.
+   */
+  async test(batchId: string, sampleSize = DEFAULT_TEST_SAMPLE_SIZE): Promise<TestBatchResult> {
+    const testKey = `${batchId}${TEST_BATCH_SUFFIX}`
+
+    // If a previous test is still running, resolve its promise as failed and stop it
+    if (this.activeStates.has(testKey)) {
+      const oldResolver = this.testResolvers.get(testKey)
+      if (oldResolver) {
+        oldResolver({
+          batchId, testKey, sampleSize: 0,
+          status: 'failed', durationMs: 0, items: [],
+        })
+        this.testResolvers.delete(testKey)
+      }
+      this.stop(testKey)
+    }
+
+    // Load the real config
+    const config = this.getBatchConfig(batchId)
+    if (!config) {
+      throw new Error(`Batch "${batchId}" not found in configuration`)
+    }
+    // Allow testing disabled batches — "enabled" controls auto-start, not testability
+
+    // Load data source and sample
+    const allItems = loadBatchItems(config.source, this.options.workspaceRootPath)
+    const sampled = deterministicSample(allItems, Math.min(sampleSize, allItems.length), batchId)
+
+    log.info(`[BatchProcessor] Testing batch "${batchId}" with ${sampled.length} sampled items`)
+
+    // Store sampled items
+    const itemMap = new Map<string, BatchItem>()
+    for (const item of sampled) itemMap.set(item.id, item)
+    this.batchItems.set(testKey, itemMap)
+
+    // Create modified config with test output path
+    const testConfig: BatchConfig = { ...config, id: testKey }
+    if (testConfig.output) {
+      testConfig.output = {
+        ...config.output!,
+        path: config.output!.path.replace(/\.jsonl$/, '.test.jsonl'),
+      }
+    }
+    this.configOverrides.set(testKey, testConfig)
+
+    // Create state for sampled items only
+    const state = createInitialBatchState(testKey, sampled.map(i => i.id))
+    state.status = 'running'
+    state.startedAt = Date.now()
+    saveBatchState(this.options.workspaceRootPath, state)
+    this.activeStates.set(testKey, state)
+
+    // Set up completion promise
+    const resultPromise = new Promise<TestBatchResult>((resolve) => {
+      this.testResolvers.set(testKey, resolve)
+    })
+
+    this.beginDispatching(testKey, state)
+    return resultPromise
   }
 
   /**
@@ -552,6 +657,7 @@ export class BatchProcessor {
   stop(batchId: string): void {
     this.activeStates.delete(batchId)
     this.batchItems.delete(batchId)
+    this.configOverrides.delete(batchId)
 
     // Remove all sessionToItem mappings for this batch
     for (const [sessionId, mapping] of this.sessionToItem) {
@@ -569,6 +675,8 @@ export class BatchProcessor {
   dispose(): void {
     for (const [batchId, state] of this.activeStates) {
       if (state.status === 'running') {
+        // Don't save test batches as paused — they're ephemeral
+        if (batchId.endsWith(TEST_BATCH_SUFFIX)) continue
         state.status = 'paused'
         saveBatchState(this.options.workspaceRootPath, state)
         log.debug(`[BatchProcessor] Saved batch "${batchId}" as paused during dispose`)
@@ -577,6 +685,49 @@ export class BatchProcessor {
     this.activeStates.clear()
     this.sessionToItem.clear()
     this.batchItems.clear()
+    this.configOverrides.clear()
+
+    // Reject any pending test resolvers
+    for (const [testKey, resolver] of this.testResolvers) {
+      resolver({
+        batchId: testKey.replace(TEST_BATCH_SUFFIX, ''),
+        testKey,
+        sampleSize: 0,
+        status: 'failed',
+        durationMs: 0,
+        items: [],
+      })
+    }
+    this.testResolvers.clear()
+
     log.debug(`[BatchProcessor] Disposed`)
   }
+}
+
+/**
+ * Simple seeded PRNG (Linear Congruential Generator).
+ * Returns a function that produces deterministic floats in [0, 1).
+ */
+function seededRng(seed: string): () => number {
+  let state = createHash('md5').update(seed).digest().readUInt32BE(0)
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 0x100000000
+  }
+}
+
+/**
+ * Deterministic Fisher-Yates shuffle seeded by `seed`.
+ * Same seed + same items + same n → same result every time.
+ */
+function deterministicSample<T>(items: T[], n: number, seed: string): T[] {
+  const rng = seededRng(seed)
+  const arr = [...items]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const tmp = arr[i]!
+    arr[i] = arr[j]!
+    arr[j] = tmp
+  }
+  return arr.slice(0, n)
 }

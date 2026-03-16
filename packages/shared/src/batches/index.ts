@@ -24,6 +24,7 @@ export type {
   BatchSystemOptions,
   BatchExecutePromptParams,
   BatchItem,
+  TestBatchResult,
 } from './types.ts'
 
 // ============================================================================
@@ -36,6 +37,8 @@ export {
   DEFAULT_MAX_CONCURRENCY,
   DEFAULT_MAX_RETRIES,
   BATCH_ITEM_ENV_PREFIX,
+  DEFAULT_TEST_SAMPLE_SIZE,
+  TEST_BATCH_SUFFIX,
 } from './constants.ts'
 
 // ============================================================================

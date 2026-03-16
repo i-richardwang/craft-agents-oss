@@ -60,6 +60,7 @@
     "./automations": "./src/automations/index.ts",
     "./automations/resolve-config-path": "./src/automations/resolve-config-path.ts",
     "./batches": "./src/batches/index.ts",
+    "./batches/constants": "./src/batches/constants.ts",
     "./protocol": "./src/protocol/index.ts"
   },
   "dependencies": {

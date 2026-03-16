@@ -189,6 +189,74 @@ craft-agent-batch create \
   --patch '{"execution":{"retryOnFailure":true,"maxRetries":3}}'
 ```
 
+## Testing Batches
+
+Before running a full batch, always test with a random sample to validate your prompt, output schema, and result quality.
+
+### How to Test
+
+Use the `batch_test` tool to run a random sample:
+
+- `batchId` (required): The batch ID to test
+- `sampleSize` (optional): Number of random items (default: 3)
+
+The test runs real sessions with the same configuration as production, but:
+- Only processes a random sample of items
+- Writes output to a separate file: `{output-path}.test.jsonl` (e.g., `results.test.jsonl`)
+- State tracked separately in `batch-state-{id}__test.json`
+- Does not affect production batch state or output
+
+### Test Result
+
+`batch_test` blocks until all sampled items complete and returns a JSON result:
+
+- `status` — `"completed"` or `"failed"`
+- `sampleSize` — Number of items tested
+- `durationMs` — Total test duration
+- `items` — Array of per-item results, each with `itemId`, `status`, `error` (if failed), and `sessionId`
+- `outputPath` — Path to the test output file (use this to read structured results)
+
+### Iterative Workflow
+
+1. Create the batch configuration using CLI
+2. Call `batch_test` to run a sample
+3. **Review** the results (see Review Checklist below)
+4. If issues found, update the prompt or schema using CLI (`craft-agent-batch update`)
+5. Repeat steps 2-4 until satisfied
+6. Tell the user the batch is ready — the user starts the full batch from the UI
+
+### Review Checklist
+
+After each test run, read the test output file (path from `outputPath` in the test result) and review across three dimensions:
+
+#### 1. Execution — Did each item run correctly?
+
+- Did all items complete, or did some fail? Read errors to understand why.
+- Did the agent follow the prompt instructions? Look for signs of misinterpretation or ignored requirements.
+- If there are failures or misinterpretations, the **prompt wording** likely needs to be clearer or more specific.
+
+#### 2. Task Design — Is the task well-defined?
+
+- **Schema completeness**: Are there fields that should be added or removed? Are required fields truly required?
+- **Enum/category quality**: For classification tasks, do the categories cover all cases without overlap (MECE)? Would the agent struggle to pick between categories for an ambiguous item?
+- **Granularity**: Is the output too coarse (losing useful detail) or too fine (creating noise)?
+- **Assumptions**: Does the prompt assume something that may not hold for all items in the full dataset?
+
+If the structure or definitions need adjusting, update the schema or prompt via CLI.
+
+#### 3. Output Quality — Is the content good enough?
+
+- **Accuracy**: Are the results factually correct and well-grounded in the input data?
+- **Consistency**: Do similar items produce similar quality results, or is there high variance?
+- **Specificity**: Are results substantive and specific to each item, or generic and templated?
+- **Edge cases**: Do items with unusual data (empty fields, long text, special characters) produce reasonable results?
+
+If content quality is poor despite clear instructions and good schema, consider adding examples, constraints, or evaluation criteria to the prompt.
+
+### Test Output
+
+Test output uses the same JSONL format as production output. Read the `.test.jsonl` file (path from `outputPath`) to inspect structured results for each sampled item.
+
 ## Lifecycle
 
 Each batch follows a defined lifecycle:

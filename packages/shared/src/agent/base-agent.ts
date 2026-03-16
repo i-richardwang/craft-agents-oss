@@ -211,6 +211,7 @@ export abstract class BaseAgent implements AgentBackend {
   onUsageUpdate: ((update: UsageUpdate) => void) | null = null;
   onBackendAuthRequired: ((reason: string) => void) | null = null;
   onSpawnSession: ((request: SpawnSessionRequest) => Promise<SpawnSessionResult>) | null = null;
+  onBatchTest: ((batchId: string, sampleSize?: number) => Promise<import('../batches/types.ts').TestBatchResult>) | null = null;
 
   // ============================================================
   // Constructor

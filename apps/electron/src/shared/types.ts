@@ -573,6 +573,9 @@ export interface ElectronAPI {
   getBatchStatus(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchProgress | null>
   getBatchState(workspaceId: string, batchId: string): Promise<import('@craft-agent/shared/batches').BatchState | null>
 
+  // Batch test
+  testBatch(workspaceId: string, batchId: string, sampleSize?: number): Promise<import('@craft-agent/shared/batches').TestBatchResult>
+
   // Batch CRUD
   setBatchEnabled(workspaceId: string, batchId: string, enabled: boolean): Promise<void>
   duplicateBatch(workspaceId: string, batchId: string): Promise<void>

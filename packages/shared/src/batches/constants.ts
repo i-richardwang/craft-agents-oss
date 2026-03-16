@@ -13,3 +13,9 @@ export const DEFAULT_MAX_RETRIES = 2
 /** Environment variable prefix for batch item fields */
 export const BATCH_ITEM_ENV_PREFIX = 'BATCH_ITEM_'
 
+/** Default number of items to sample when testing a batch */
+export const DEFAULT_TEST_SAMPLE_SIZE = 3
+
+/** Suffix appended to batch ID to form the virtual test key */
+export const TEST_BATCH_SUFFIX = '__test'
+

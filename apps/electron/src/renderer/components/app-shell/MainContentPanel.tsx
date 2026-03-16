@@ -82,9 +82,12 @@ export function MainContentPanel({
     onStartBatch,
     onPauseBatch,
     onResumeBatch,
+    onTestBatch,
     getBatchState,
     onDuplicateBatch,
     onDeleteBatch,
+    testProgress,
+    testResults,
   } = useAppShellContext()
 
   // Session multi-select state
@@ -321,9 +324,12 @@ export function MainContentPanel({
               onStart={onStartBatch ? () => onStartBatch(batch.id ?? '') : undefined}
               onPause={onPauseBatch ? () => onPauseBatch(batch.id ?? '') : undefined}
               onResume={onResumeBatch ? () => onResumeBatch(batch.id ?? '') : undefined}
+              onTest={onTestBatch ? () => onTestBatch(batch.id ?? '') : undefined}
               onDuplicate={onDuplicateBatch ? () => onDuplicateBatch(batch.id ?? '') : undefined}
               onDelete={onDeleteBatch ? () => onDeleteBatch(batch.id ?? '') : undefined}
               getBatchState={getBatchState}
+              testProgress={testProgress?.[batch.id ?? '']}
+              testResult={testResults?.[batch.id ?? '']}
             />
           </Panel>
         )

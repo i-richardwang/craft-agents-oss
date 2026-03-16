@@ -55,6 +55,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.batches.SET_ENABLED,
   RPC_CHANNELS.batches.DUPLICATE,
   RPC_CHANNELS.batches.DELETE,
+  RPC_CHANNELS.batches.TEST,
 ] as const
 
 export function registerBatchesHandlers(server: RpcServer, deps: HandlerDeps): void {
@@ -158,5 +159,15 @@ export function registerBatchesHandlers(server: RpcServer, deps: HandlerDeps): v
     } catch {
       // State file may not exist
     }
+  })
+
+  server.handle(RPC_CHANNELS.batches.TEST, async (_ctx, workspaceId: string, batchId: string, sampleSize?: number) => {
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const processor = deps.sessionManager.getBatchProcessor?.(workspace.rootPath)
+    if (!processor) throw new Error('Batch processor not initialized')
+
+    return processor.test(batchId, sampleSize ?? undefined)
   })
 }
