@@ -3,7 +3,7 @@
 > Records all fork changes relative to `upstream/main` (lukilabs/craft-agents-oss).
 > Purpose: identify conflict zones, understand intent, make informed merge resolution decisions.
 >
-> **Last updated after:** v0.7.5 merge (Webhook actions for automations, network proxy, working directory history, model resolution refactor)
+> **Last updated after:** v0.7.6 merge (Custom endpoint persistence fix, MCP custom headers, OAuth refresh loop fix, OSS build parity)
 
 ## Overview
 
@@ -15,7 +15,9 @@ Our fork adds four categories of changes:
 
 3. **Preset Preservation Fix** — Fix to `resolvePresetStateForBaseUrlChange()` preserving Pi SDK provider routing when a preset points at a custom proxy endpoint.
 
-4. **Border-Radius Theme Tokens** — Overrides Tailwind v4's default `--radius-*` CSS variables to `0px` in `:root` for sharp-corner branding. Converts all hardcoded `rounded-[Npx]` arbitrary values to standard Tailwind classes (`rounded-sm`, `rounded-lg`, etc.) so they flow through the CSS variable system. CSS files with hardcoded `border-radius` pixel values are also converted to `var(--radius-*)`.
+4. **Custom Endpoint Runtime Fixes** — Two fixes for upstream's custom endpoint system introduced in v0.7.4: (a) `queryLlm()` provider compatibility check now exempts `custom-endpoint` models so they aren't incorrectly rejected and forced to fallback; (b) `validateStoredConnection()` in the Pi driver makes actual API calls (Anthropic or OpenAI-compatible) instead of returning `{ success: true }` unconditionally.
+
+5. **Border-Radius Theme Tokens** — Overrides Tailwind v4's default `--radius-*` CSS variables to `0px` in `:root` for sharp-corner branding. Converts all hardcoded `rounded-[Npx]` arbitrary values to standard Tailwind classes (`rounded-sm`, `rounded-lg`, etc.) so they flow through the CSS variable system. CSS files with hardcoded `border-radius` pixel values are also converted to `var(--radius-*)`.
 
 ---
 
@@ -105,6 +107,16 @@ These files are frequently touched by upstream and have substantial fork modific
 **Pattern:** Mirrors existing `sessionScopedToolsCache` Map registry.
 
 ### MEDIUM Risk — Check After Upstream Changes
+
+#### `packages/pi-agent-server/src/index.ts` *(Custom Endpoint Fix)*
+
+Modified `queryLlm()` provider compatibility check in two places: custom-endpoint models (provider === `'custom-endpoint'`) are now exempted from the `provider !== authProvider` rejection so they don't fallback to Anthropic default models. Without this fix, custom endpoints get 401 errors against `api.anthropic.com`.
+
+**Note:** Upstream v0.7.6 still has the original check without this exemption. If upstream fixes this themselves, our changes can be dropped.
+
+#### `packages/shared/src/agent/backend/internal/drivers/pi.ts` *(Custom Endpoint Fix)*
+
+Added `testOpenAICompatible()` function (~70 lines) for OpenAI-compatible endpoint validation (tries `/chat/completions` then `/v1/chat/completions`). Enhanced `validateStoredConnection()` to make actual API calls for custom endpoints (routes to `testAnthropicCompatible` or `testOpenAICompatible` based on `customEndpoint.api`), with credential-only check fallback for standard Pi connections.
 
 #### `packages/shared/src/agent/claude-agent.ts`
 
@@ -288,3 +300,4 @@ When merging upstream updates:
 | v0.7.4 | 2026-03-12 | 2 | Custom endpoints, session branching overhaul, model switching fix, Windows branch fixes. Resolved: `config-watcher.ts` — accepted upstream deletion (shared version has our batch additions); `pi-agent-server/src/index.ts` — adopted upstream's full custom endpoint system (`registerCustomEndpointModels`, `CustomEndpointApi`), replacing our `customBaseUrlOverride` approach. |
 | v0.7.5 | 2026-03-13 | 3 | Webhook actions for automations, network proxy, working directory history, model resolution refactor. Resolved: `AppShell.tsx` — added upstream's `onReplayAutomation` alongside batch handlers; `AppShellContext.tsx` — added `onReplayAutomation` to context interface; `SessionManager.ts` — merged `createPromptHistoryEntry` import with our `BatchProcessor` import. Additional fix: `rpc/automations.ts` — inserted `undefined` placeholders for fork's `hidden`/`batchContext` params in new `executePromptAutomation` call site. |
 | batch-tools | 2026-03-16 | — | Batch mode tool filtering: `BATCH_EXCLUDED_TOOLS` (14 registry tools), `batchMode` option in `SessionToolFilterOptions`, backend tools (`spawn_session`, `batch_test`, `browser_tool`) conditionally skipped in Claude adapter. Batch sessions reduced from 19+ tools to 3 (`batch_output`, `call_llm`, `script_sandbox`). |
+| v0.7.6 | 2026-03-17 | 1 | Custom endpoint persistence, MCP custom headers, OAuth refresh loop fix, model ID format fix, OSS build scripts. Resolved: `storage.ts` — identical `customEndpoint` persistence fix on both sides (took upstream comment). Fork-only fixes retained: `pi-agent-server/index.ts` queryLlm provider check exemption, `pi.ts` validateStoredConnection enhancement, `submit-helpers.ts` preset preservation. |
