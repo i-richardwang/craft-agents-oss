@@ -3,7 +3,7 @@
 > Records all fork changes relative to `upstream/main` (lukilabs/craft-agents-oss).
 > Purpose: identify conflict zones, understand intent, make informed merge resolution decisions.
 >
-> **Last updated after:** batch-isBatch (Batch sessions: `hidden` → `isBatch` with dedicated sidebar filter)
+> **Last updated after:** v0.7.7 merge (adaptive thinking, directory browsing, conditions system)
 
 ## Overview
 
@@ -108,11 +108,9 @@ These files are frequently touched by upstream and have substantial fork modific
 
 ### MEDIUM Risk — Check After Upstream Changes
 
-#### `packages/pi-agent-server/src/index.ts` *(Custom Endpoint Fix)*
+#### `packages/pi-agent-server/src/index.ts` *(Custom Endpoint Fix — resolved in v0.7.7)*
 
-Modified `queryLlm()` provider compatibility check in two places: custom-endpoint models (provider === `'custom-endpoint'`) are now exempted from the `provider !== authProvider` rejection so they don't fallback to Anthropic default models. Without this fix, custom endpoints get 401 errors against `api.anthropic.com`.
-
-**Note:** Upstream v0.7.6 still has the original check without this exemption. If upstream fixes this themselves, our changes can be dropped.
+~~Modified `queryLlm()` provider compatibility check in two places~~ — **upstream v0.7.7 adopted the same fix**. Both provider compatibility checks now exempt `custom-endpoint` models. Our fork-specific code was replaced with upstream's cleaner implementation during the v0.7.7 merge. **This fork change is no longer needed.**
 
 #### `packages/shared/src/agent/backend/internal/drivers/pi.ts` *(Custom Endpoint Fix)*
 
@@ -309,3 +307,4 @@ When merging upstream updates:
 | v0.7.6 | 2026-03-17 | 1 | Custom endpoint persistence, MCP custom headers, OAuth refresh loop fix, model ID format fix, OSS build scripts. Resolved: `storage.ts` — identical `customEndpoint` persistence fix on both sides (took upstream comment). Fork-only fixes retained: `pi-agent-server/index.ts` queryLlm provider check exemption, `pi.ts` validateStoredConnection enhancement, `submit-helpers.ts` preset preservation. |
 | batch-workdir | 2026-03-17 | — | Per-batch working directory: `BatchConfig.workingDirectory` (optional absolute path) passed through `BatchProcessor` → `executePromptAutomation()` → `createSession()`. CLI `--working-directory` flag on create/update. UI display in `BatchInfoPage` Execution section. |
 | batch-isBatch | 2026-03-18 | — | Batch sessions visibility: replaced `hidden: true` with `isBatch: true` persistent field. Batch sessions now excluded from All Sessions but visible under dedicated "Batch Sessions" sidebar entry (alongside Flagged/Archived). Added `{ kind: 'batch' }` to `SessionFilter`, `batchSessions` route, route-parser support, empty state. Updated server-side filtering (unread summary, markAllRead, search) and client notifications to exclude `isBatch` sessions. `hidden` field retained for mini-edit sessions only. |
+| v0.7.7 | 2026-03-18 | 2 | Adaptive thinking levels, directory browsing, custom endpoint prefetch, onboarding skip, conditions system for automations. Resolved: `pi-agent-server/index.ts` — upstream adopted same custom-endpoint provider exemption (took upstream's cleaner implementation, fork fix no longer needed); `tool-defs.ts` — kept fork's `batch_output`/`batch_test` tools, adopted upstream's `readOnly` annotation on `call_llm`. Fork-only fixes retained: `pi.ts` validateStoredConnection, `factory.ts` cross-provider guard skip, `submit-helpers.ts` preset preservation. |
