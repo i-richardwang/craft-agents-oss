@@ -194,6 +194,7 @@ export type SessionEvent =
   | { type: 'batch_progress' } & import('../batches/types').BatchProgress
   | { type: 'batch_complete'; batchId: string; status: import('../batches/types').BatchStatus }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
+  | { type: 'working_directory_error'; sessionId: string; error: string }
 
 export interface SendMessageOptions {
   skillSlugs?: string[]
@@ -268,6 +269,28 @@ export interface CredentialResponse {
   password?: string
   headers?: Record<string, string>
   cancelled: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Directory browsing types (remote mode)
+// ---------------------------------------------------------------------------
+
+/** Server-side directory listing result (for remote directory browsing). */
+export interface DirectoryListingResult {
+  /** Normalized absolute path of the listed directory (after resolve(), not symlink-resolved). */
+  currentPath: string
+  /** Parent directory path, or null if at root. */
+  parentPath: string | null
+  /** Pre-split breadcrumb segments for display (computed server-side). */
+  breadcrumbs: Array<{ name: string; path: string }>
+  /** Server platform info. */
+  platform: 'win32' | 'darwin' | 'linux'
+  /** Whether the server truncated the directory list for safety/performance. */
+  truncated: boolean
+  /** Total number of matching child directories before truncation. */
+  totalEntries: number
+  /** Child directory entries. */
+  entries: Array<{ name: string; path: string; isSymlink: boolean }>
 }
 
 // ---------------------------------------------------------------------------
