@@ -45,8 +45,8 @@ const ALL_PROVIDER_OPTIONS: ProviderOption[] = [
   },
   {
     id: 'api_key',
-    name: 'I have an API key',
-    description: 'Anthropic, OpenRouter, Google or any compatible provider.',
+    name: 'I use other provider',
+    description: 'Anthropic, AWS Bedrock, OpenRouter, Google or any compatible provider.',
     icon: <Key className="size-5" />,
   },
   {
